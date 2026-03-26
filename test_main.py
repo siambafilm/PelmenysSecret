@@ -1,5 +1,5 @@
 import pygame as pg
-from dialog import Replique, ChoiseStep, Character, Dialog
+from dialog import Replique, ChoiseStep, Character, Dialog, ChoiceDialogPart
 
 pg.init() #initialize lib
 WIDTH = 800
@@ -17,10 +17,14 @@ pers = Character("Pers", pers_dialog_face, pers_dialog_face_rect)
 dialog_start = False
 cur_w = WIDTH
 cur_h = HEIGHT
+mouse_coords = (0,0)
+mouse_coords_pressed = (0,0)
+mouse_btn = 0
+space_pressed = False
 
 #dialogs
-steps1 = [Replique(pers, "sosiska"), Replique(pers, "iriska"), Replique(pers, "piska")]
-dial1 = Dialog(steps1)
+steps1 = ChoiseStep(['a', 'b', 'c'], [Replique(pers, "u touched a"), Replique(pers, 'u touched b'), Replique(pers, 'u touched c')])
+dial1 = ChoiceDialogPart(steps1)
 
 run = True
 while run:
@@ -38,10 +42,6 @@ while run:
             cur_h = display.get_rect().height
 
         if e.type == pg.KEYDOWN:
-            if e.key == pg.K_SPACE:
-                #next = True
-                dial1.next()
-                print(e)
             if e.key == pg.K_e:
                 if(not dialog_start):
                     dialog_start = True
@@ -51,17 +51,23 @@ while run:
         if e.type == pg.MOUSEMOTION:
             #print(e)
             mouse_coords = e.pos
-            mouse_btns = e.buttons
+
+        if e.type == pg.MOUSEBUTTONDOWN:
+            mouse_coords_pressed = e.pos
+            mouse_btn = 1
+        if e.type == pg.MOUSEBUTTONUP:
+            mouse_coords_pressed = (0,0)
+            mouse_btn = 0
+
+        if e.type == pg.KEYDOWN:
+            if e.key == pg.K_SPACE:
+                space_pressed = True
+                print(space_pressed)
+        if e.type == pg.KEYUP:
+            space_pressed = False
 
 
     #logics
-
-    
-    #dialog 1
-    replics = [
-        ["pers"]
-    ]
-            
 
 
     #graphics
@@ -74,7 +80,7 @@ while run:
     #    next = False
     #    dial1.next()
     
-    dial1.draw(display, (20,cur_h-160,cur_w-40,140))
+    dial1.draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
 
     pg.display.update()
 

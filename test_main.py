@@ -21,6 +21,7 @@ mouse_coords = (0,0)
 mouse_coords_pressed = (0,0)
 mouse_btn = 0
 space_pressed = False
+e_pressed = False
 
 #dialogs
 steps1 = ChoiseStep(['a', 'b', 'c'], [Replique(pers, "u touched a"), Replique(pers, 'u touched b'), Replique(pers, 'u touched c')])
@@ -43,32 +44,31 @@ while run:
 
         if e.type == pg.KEYDOWN:
             if e.key == pg.K_e:
-                if(not dialog_start):
-                    dialog_start = True
-        else:
-            next = False
+                e_pressed = True
+            if e.key == pg.K_SPACE:
+                space_pressed = True
+
+        if e.type == pg.KEYUP:
+            if e.key == pg.K_SPACE:
+                space_pressed = False
+            if e.key == pg.K_e:
+                e_pressed = False
 
         if e.type == pg.MOUSEMOTION:
-            #print(e)
             mouse_coords = e.pos
 
         if e.type == pg.MOUSEBUTTONDOWN:
             mouse_coords_pressed = e.pos
-            mouse_btn = 1
+            mouse_btn = e.button
         if e.type == pg.MOUSEBUTTONUP:
-            mouse_coords_pressed = (0,0)
+            mouse_coords_pressed = (-1,-1)
             mouse_btn = 0
-
-        if e.type == pg.KEYDOWN:
-            if e.key == pg.K_SPACE:
-                space_pressed = True
-                print(space_pressed)
-        if e.type == pg.KEYUP:
-            space_pressed = False
 
 
     #logics
-
+    if(e_pressed):
+        if(not dialog_start):
+            dialog_start = True
 
     #graphics
     pg.draw.rect(display, (255,255,255), (0,0,cur_w,cur_h)) #background
@@ -76,9 +76,6 @@ while run:
         dial1.activate()
         dialog_start = False
     
-    #if(next):
-    #    next = False
-    #    dial1.next()
     
     dial1.draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
 

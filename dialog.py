@@ -33,10 +33,12 @@ class Dialog:
         self.active = False
         self.steps = steps
         self.i = -1
+        self.space_handled = False
     
     def next(self):
         if(self.active):
             self.i += 1
+            print(self.i)
             if(self.i >= len(self.steps)):
                 self.deactivate()
             else:
@@ -45,6 +47,7 @@ class Dialog:
     def activate(self):
         if(not self.active):
             self.active = True
+            self.space_handled = False
             self.next()
         
     def deactivate(self):
@@ -53,7 +56,7 @@ class Dialog:
             self.i = -1
 
 
-    def draw(self, display, rect):
+    def draw(self, display, rect, mouseCoords, mouseBtn, space_pressed):
         if(self.active):
             image = self.cur_step.character.dialog_picture
             image_rect = self.cur_step.character.rect
@@ -72,6 +75,11 @@ class Dialog:
             display.blit(name_surface, name_rect)
             draw_text_wrapped(display, text, dialog_text_font, (0,0,0), pg.Rect((image_rect.x + image_rect.width + 20), rect[1]+25, rect[2]-160, rect[3]-50 ))
 
+            if space_pressed and not self.space_handled:
+                self.space_handled = True
+                self.next()
+            elif not space_pressed:
+                self.space_handled = False
 
 
 class ChoiceDialogPart:
@@ -133,5 +141,5 @@ class ChoiceDialogPart:
                 display.blit(name_surface, name_rect)
                 draw_text_wrapped(display, text, dialog_text_font, (0,0,0), pg.Rect((image_rect.x + image_rect.width + 20), rect[1]+25, rect[2]-160, rect[3]-50 ))
                 
-                if(space_pressed):
+                if space_pressed:
                     self.deactivate()

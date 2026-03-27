@@ -1,5 +1,5 @@
 import pygame as pg
-from dialog import Replique, ChoiseStep, Character, Dialog, ChoiceDialogPart
+from dialog_obsolete import Replique, ChoiseStep, Character, Dialog, ChoiceDialogPart
 
 pg.init() #initialize lib
 WIDTH = 800

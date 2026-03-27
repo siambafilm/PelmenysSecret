@@ -293,9 +293,9 @@ class DialogSystem:
         
         # Если ждем отпускания пробела
         if self.waiting_for_space_release:
-            print(f"Waiting for space release, space_pressed={space_pressed}")
+            #print(f"Waiting for space release, space_pressed={space_pressed}")
             if not space_pressed:
-                print("Space released, activating pending dialog")
+                #print("Space released, activating pending dialog")
                 self.waiting_for_space_release = False
                 if self.pending_dialog:
                     self.pending_dialog.dialog.activate()
@@ -305,15 +305,15 @@ class DialogSystem:
             return
         
         if self.current_index >= len(self.current_chain):
-            print("Chain finished - all nodes processed")
+            #print("Chain finished - all nodes processed")
             self.stop_chain()
             return
         
         current_node = self.current_chain[self.current_index]
         
-        print(f"\n--- Update ---")
-        print(f"Current index: {self.current_index}, Dialog type: {type(current_node.dialog).__name__}")
-        print(f"space_pressed={space_pressed}, mouse_btn={mouse_btn}")
+        #print(f"\n--- Update ---")
+        #print(f"Current index: {self.current_index}, Dialog type: {type(current_node.dialog).__name__}")
+        #print(f"space_pressed={space_pressed}, mouse_btn={mouse_btn}")
         
         # Защита от многократного нажатия
         space_triggered = space_pressed and not self.space_handled
@@ -328,31 +328,31 @@ class DialogSystem:
         elif mouse_btn == 0:
             self.mouse_handled = False
         
-        print(f"space_triggered={space_triggered}, mouse_triggered={mouse_triggered}")
+        #print(f"space_triggered={space_triggered}, mouse_triggered={mouse_triggered}")
         
         # Обновляем текущий узел
         current_node.update(space_triggered, mouse_pos, mouse_triggered)
         
         # Проверяем завершен ли текущий диалог
         completed = self.is_node_completed(current_node)
-        print(f"Node completed: {completed}")
+        #print(f"Node completed: {completed}")
         
         if completed:
-            print(f"Node {self.current_index} completed")
+            #print(f"Node {self.current_index} completed")
             
             # Деактивируем текущий диалог если он еще активен
             if current_node.dialog.active:
-                print("Deactivating current dialog")
+                #print("Deactivating current dialog")
                 current_node.dialog.deactivate()
             
             # Переходим к следующему
             self.current_index += 1
-            print(f"Moved to next index: {self.current_index}")
+            #print(f"Moved to next index: {self.current_index}")
             
             # Активируем следующий диалог если есть
             if self.current_index < len(self.current_chain):
                 next_node = self.current_chain[self.current_index]
-                print(f"Preparing to activate next dialog (index {self.current_index})")
+                #print(f"Preparing to activate next dialog (index {self.current_index})")
                 
                 # Сбрасываем флаги
                 self.space_handled = False
@@ -360,11 +360,11 @@ class DialogSystem:
                 
                 # Проверяем состояние пробела
                 if space_pressed:
-                    print("Space is still pressed, waiting for release")
+                    #print("Space is still pressed, waiting for release")
                     self.waiting_for_space_release = True
                     self.pending_dialog = next_node
                 else:
-                    print("Activating next dialog immediately")
+                    #print("Activating next dialog immediately")
                     next_node.dialog.activate()
             else:
                 print("All dialogs completed, stopping chain")
@@ -374,11 +374,11 @@ class DialogSystem:
         """Проверяет завершен ли узел"""
         if isinstance(node.dialog, Dialog):
             result = node.dialog.completed
-            print(f"  Dialog completed={result}")
+            #print(f"  Dialog completed={result}")
             return result
         elif isinstance(node.dialog, ChoiceDialogPart):
             result = node.dialog.completed or (node.dialog.choiced and not node.dialog.active)
-            print(f"  ChoiceDialogPart completed={result}, choiced={node.dialog.choiced}, active={node.dialog.active}")
+            #print(f"  ChoiceDialogPart completed={result}, choiced={node.dialog.choiced}, active={node.dialog.active}")
             return result
         return False
     

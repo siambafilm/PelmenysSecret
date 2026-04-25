@@ -1,11 +1,12 @@
 import pygame as pg
-from dialog_obsolete import Replique, ChoiseStep, Character, Dialog, ChoiceDialogPart
+from dialog import *
 
 pg.init() #initialize lib
 WIDTH = 800
 HEIGHT = 600
-display = pg.display.set_mode((WIDTH, HEIGHT),pg.RESIZABLE) #make window 800*600
+display = pg.display.set_mode((WIDTH, HEIGHT),pg.RESIZABLE) #make window 
 pg.display.set_caption("Super game")
+clock = pg.time.Clock()
 
 
 #characters
@@ -14,7 +15,6 @@ pers_dialog_face_rect = pers_dialog_face.get_rect()
 pers = Character("Pers", pers_dialog_face, pers_dialog_face_rect)
 
 #definitions
-dialog_start = False
 cur_w = WIDTH
 cur_h = HEIGHT
 mouse_coords = (0,0)
@@ -24,11 +24,26 @@ space_pressed = False
 e_pressed = False
 
 #dialogs
-steps1 = ChoiseStep(['a', 'b', 'c'], [Replique(pers, "u touched a"), Replique(pers, 'u touched b'), Replique(pers, 'u touched c')])
-dial1 = ChoiceDialogPart(steps1)
+steps1 = [Replique(pers, "sosiska"), Replique(pers, "iriska"), Replique(pers, "piska")]
+dial1 = Dialog(steps1)
+step2 = ChoiseStep(['a', 'b', 'c'], [Replique(pers, "u touched a"), Replique(pers, 'u touched b'), Replique(pers, 'u touched c')])
+dial2 = ChoiceDialogPart(step2)
+steps3 = [Replique(pers, "sosideecska"), Replique(pers, "irisdcsska"), Replique(pers, "pisdcsdcska")]
+dial3 = Dialog(steps3)
+
+dialog_system = DialogSystem()
+
+dialogs = [
+    dial1,
+    dial2,
+    dial3
+]
+#cur_dialog = -1
 
 run = True
 while run:
+    #fps
+    clock.tick(60)
     
     #events
     for e in pg.event.get():
@@ -66,18 +81,30 @@ while run:
 
 
     #logics
+
     if(e_pressed):
-        if(not dialog_start):
-            dialog_start = True
+        if(not dialog_system.is_active()):
+            dialog_system.start_chain(dialogs)
+
+    dialog_system.update(space_pressed, mouse_coords, mouse_btn)
+
+
+        #for test
+        #cur_dialog = 1
+        #if(cur_dialog != -1):
+        #    if(not dialogs[cur_dialog].active):
+        #        dialogs[cur_dialog].activate()
+            
+
 
     #graphics
     pg.draw.rect(display, (255,255,255), (0,0,cur_w,cur_h)) #background
-    if(dialog_start):
-        dial1.activate()
-        dialog_start = False
     
-    
-    dial1.draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
+    if(dialog_system.is_active()):
+        dialog_system.draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
+
+    #if(cur_dialog != -1):
+    #    dialogs[cur_dialog].draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
 
     pg.display.update()
 

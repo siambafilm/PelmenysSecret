@@ -1,111 +1,80 @@
 import pygame as pg
-from dialog import *
+import sys
 
-pg.init() #initialize lib
-WIDTH = 800
-HEIGHT = 600
-display = pg.display.set_mode((WIDTH, HEIGHT),pg.RESIZABLE) #make window 
-pg.display.set_caption("Super game")
-clock = pg.time.Clock()
-
-
-#characters
-pers_dialog_face = pg.image.load('pics/main_person/dialogFace.png').convert_alpha()
-pers_dialog_face_rect = pers_dialog_face.get_rect()
-pers = Character("Pers", pers_dialog_face, pers_dialog_face_rect)
-
-#definitions
-cur_w = WIDTH
-cur_h = HEIGHT
-mouse_coords = (0,0)
-mouse_coords_pressed = (0,0)
-mouse_btn = 0
-space_pressed = False
-e_pressed = False
-
-#dialogs
-steps1 = [Replique(pers, "sosiska"), Replique(pers, "iriska"), Replique(pers, "piska")]
-dial1 = Dialog(steps1)
-step2 = ChoiseStep(['a', 'b', 'c'], [Replique(pers, "u touched a"), Replique(pers, 'u touched b'), Replique(pers, 'u touched c')])
-dial2 = ChoiceDialogPart(step2)
-steps3 = [Replique(pers, "sosideecska"), Replique(pers, "irisdcsska"), Replique(pers, "pisdcsdcska")]
-dial3 = Dialog(steps3)
-
-dialog_system = DialogSystem()
-
-dialogs = [
-    dial1,
-    dial2,
-    dial3
-]
-#cur_dialog = -1
-
-run = True
-while run:
-    #fps
-    clock.tick(60)
+class Game:
+    """Главный класс игры, управляющий сценами"""
     
-    #events
-    for e in pg.event.get():
-        if e.type == pg.QUIT:
-            run = False
-
-        if e.type == pg.VIDEORESIZE:
-            new_w = max(e.w, WIDTH)
-            new_h = max(e.h, HEIGHT)
-            display = pg.display.set_mode((new_w, new_h), pg.RESIZABLE)
-            cur_w = display.get_rect().width
-            cur_h = display.get_rect().height
-
-        if e.type == pg.KEYDOWN:
-            if e.key == pg.K_e:
-                e_pressed = True
-            if e.key == pg.K_SPACE:
-                space_pressed = True
-
-        if e.type == pg.KEYUP:
-            if e.key == pg.K_SPACE:
-                space_pressed = False
-            if e.key == pg.K_e:
-                e_pressed = False
-
-        if e.type == pg.MOUSEMOTION:
-            mouse_coords = e.pos
-
-        if e.type == pg.MOUSEBUTTONDOWN:
-            mouse_coords_pressed = e.pos
-            mouse_btn = e.button
-        if e.type == pg.MOUSEBUTTONUP:
-            mouse_coords_pressed = (-1,-1)
-            mouse_btn = 0
-
-
-    #logics
-
-    if(e_pressed):
-        if(not dialog_system.is_active()):
-            dialog_system.start_chain(dialogs)
-
-    dialog_system.update(space_pressed, mouse_coords, mouse_btn)
-
-
-        #for test
-        #cur_dialog = 1
-        #if(cur_dialog != -1):
-        #    if(not dialogs[cur_dialog].active):
-        #        dialogs[cur_dialog].activate()
+    def __init__(self):
+        pg.init()
+        
+        # Настройки окна
+        self.WIDTH = 800
+        self.HEIGHT = 600
+        self.screen = pg.display.set_mode((self.WIDTH, self.HEIGHT), pg.RESIZABLE)
+        pg.display.set_caption("Super Game - Главное меню")
+        
+        self.clock = pg.time.Clock()
+        self.running = True
+        
+        # Текущая сцена
+        self.current_scene = None
+        
+        self.scene_history = []  # стек сцен
+        # Загрузка первой сцены (главное меню)
+        self.change_scene("MAIN_MENU")
+    
+    def change_scene(self, scene_name, **kwargs):
+        """Переключение между сценами"""
+        if scene_name == "MAIN_MENU":
+            from main_menu import MainMenu
+            self.current_scene = MainMenu(self.screen)
+        elif scene_name == "GAME":
+            from game_scene import GameScene
+            self.current_scene = GameScene(self.screen, **kwargs)
+        elif scene_name == "QUIT":
+            self.running = False
+            return
+        else:
+            self.current_scene = scene_name
+        
+        print(f"Переключено на сцену: {type(self.current_scene).__name__}")
+    
+    def run(self):
+        """Главный игровой цикл"""
+        while self.running:
+            events = pg.event.get()
+            for event in events:
+                if event.type == pg.QUIT:
+                    self.running = False
             
+            if self.current_scene:
+                self.current_scene.handle_events(events)
+                self.current_scene.update()
+                
+                # Проверка на необходимость смены сцены
+                if self.current_scene.is_complete():
+                    next_scene = self.current_scene.get_next_scene()
+                    
+                    # ВАЖНО: сбрасываем next_scene у текущей сцены, чтобы не вызывать переключение снова
+                    self.current_scene.next_scene = None
+                    
+                    if next_scene == "QUIT":
+                        self.running = False
+                    elif next_scene == "BACK" and self.scene_history:
+                        self.current_scene = self.scene_history.pop()
+                    elif next_scene:
+                        # Сохраняем текущую сцену в историю
+                        self.scene_history.append(self.current_scene)
+                        self.change_scene(next_scene)
+                
+                self.current_scene.draw()
+            
+            pg.display.update()
+            self.clock.tick(60)
+        
+        pg.quit()
+        sys.exit()
 
-
-    #graphics
-    pg.draw.rect(display, (255,255,255), (0,0,cur_w,cur_h)) #background
-    
-    if(dialog_system.is_active()):
-        dialog_system.draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
-
-    #if(cur_dialog != -1):
-    #    dialogs[cur_dialog].draw(display, (20,cur_h-160,cur_w-40,140), mouse_coords, mouse_btn, space_pressed)
-
-    pg.display.update()
-
-pg.quit()
+if __name__ == "__main__":
+    game = Game()
+    game.run()

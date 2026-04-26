@@ -11,7 +11,7 @@ class Game:
         self.WIDTH = 800
         self.HEIGHT = 600
         self.screen = pg.display.set_mode((self.WIDTH, self.HEIGHT), pg.RESIZABLE)
-        pg.display.set_caption("Super Game - Главное меню")
+        pg.display.set_caption("Pelmeshki - Главное меню")
         
         self.clock = pg.time.Clock()
         self.running = True
@@ -29,7 +29,8 @@ class Game:
             from main_menu import MainMenu
             self.current_scene = MainMenu(self.screen)
         elif scene_name == "GAME":
-            from game_scene import GameScene
+            #from game_scene import GameScene
+            from level1 import GameScene
             self.current_scene = GameScene(self.screen, **kwargs)
         elif scene_name == "QUIT":
             self.running = False

@@ -148,3 +148,7 @@ class GameScene(Scene):
         if self.dialog_system and self.dialog_system.is_active():
             self.dialog_system.draw(self.screen, (20, self.cur_h-160, self.cur_w-40, 140),
                                    self.mouse_coords, self.mouse_btn, self.space_pressed)
+            
+    def resume(self):
+        """Возврат из меню паузы"""
+        self.pause_opened = False

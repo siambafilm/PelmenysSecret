@@ -1,0 +1,138 @@
+ef create_demo_sprites():
+    """Создание демонстрационных спрайтов для тестирования"""
+    
+    # Создаем спрайт-лист для ходьбы (4 строки, 3 столбца)
+    walk_cols = 3
+    walk_rows = 4
+    frame_w = 64
+    frame_h = 64
+    
+    walk_sheet = pygame.Surface((frame_w * walk_cols, frame_h * walk_rows))
+    
+    # Цвета для разных направлений
+    direction_colors = {
+        "down": (100, 150, 200),   # Голубой - вниз
+        "left": (200, 150, 100),   # Оранжевый - влево
+        "right": (200, 100, 150),  # Розовый - вправо
+        "up": (150, 200, 100)      # Зеленый - вверх
+    }
+    
+    directions = ["down", "left", "right", "up"]
+    
+    for row, direction in enumerate(directions):
+        for col in range(walk_cols):
+            rect = pygame.Rect(col * frame_w, row * frame_h, frame_w, frame_h)
+            color = direction_colors[direction]
+            
+            # Фон
+            pygame.draw.rect(walk_sheet, color, rect)
+            pygame.draw.rect(walk_sheet, (255, 255, 255), rect, 2)
+            
+            # Центр кадра
+            center_x = rect.centerx
+            center_y = rect.centery
+            
+            # Тело
+            pygame.draw.rect(walk_sheet, (50, 50, 150), 
+                           (center_x - 15, center_y - 10, 30, 35))
+            
+            # Голова
+            pygame.draw.circle(walk_sheet, (255, 220, 150), 
+                             (center_x, center_y - 15), 15)
+            
+            # Глаза (смотрят в направлении движения)
+            if direction == "left":
+                eye_offset = -3
+            elif direction == "right":
+                eye_offset = 3
+            else:
+                eye_offset = 0
+                
+            pygame.draw.circle(walk_sheet, (0, 0, 0), 
+                             (center_x - 6 + eye_offset, center_y - 18), 3)
+            pygame.draw.circle(walk_sheet, (0, 0, 0), 
+                             (center_x + 6 + eye_offset, center_y - 18), 3)
+            
+            # Ноги (анимация ходьбы)
+            leg_offset = (col % 3) * 8 - 8
+            
+            # Левая нога
+            pygame.draw.line(walk_sheet, (50, 50, 150), 
+                           (center_x - 10, center_y + 20), 
+                           (center_x - 15 + leg_offset, center_y + 35), 6)
+            
+            # Правая нога
+            pygame.draw.line(walk_sheet, (50, 50, 150), 
+                           (center_x + 10, center_y + 20), 
+                           (center_x + 15 - leg_offset, center_y + 35), 6)
+            
+            # Текст номера кадра
+            font = pygame.font.Font(None, 24)
+            text = font.render(str(col+1), True, (255, 255, 255))
+            walk_sheet.blit(text, (rect.x + 5, rect.y + 5))
+            
+            # Стрелка направления
+            if direction == "down":
+                arrow = "↓"
+            elif direction == "up":
+                arrow = "↑"
+            elif direction == "left":
+                arrow = "←"
+            else:
+                arrow = "→"
+                
+            arrow_text = font.render(arrow, True, (255, 255, 255))
+            walk_sheet.blit(arrow_text, (rect.x + frame_w - 25, rect.y + 5))
+    
+    # Создаем спрайт-лист для стояния (1 строка, 2 столбца)
+    idle_cols = 2
+    idle_rows = 1
+    idle_sheet = pygame.Surface((frame_w * idle_cols, frame_h * idle_rows))
+    
+    for col in range(idle_cols):
+        rect = pygame.Rect(col * frame_w, 0, frame_w, frame_h)
+        
+        # Фон (фиолетовый для стояния)
+        pygame.draw.rect(idle_sheet, (150, 100, 150), rect)
+        pygame.draw.rect(idle_sheet, (255, 255, 255), rect, 2)
+        
+        center_x = rect.centerx
+        center_y = rect.centery
+        
+        # Тело
+        pygame.draw.rect(idle_sheet, (50, 50, 150), 
+                       (center_x - 15, center_y - 10, 30, 35))
+        
+        # Голова
+        pygame.draw.circle(idle_sheet, (255, 220, 150), 
+                         (center_x, center_y - 15), 15)
+        
+        # Глаза (прямой взгляд)
+        pygame.draw.circle(idle_sheet, (0, 0, 0), 
+                         (center_x - 6, center_y - 18), 3)
+        pygame.draw.circle(idle_sheet, (0, 0, 0), 
+                         (center_x + 6, center_y - 18), 3)
+        
+        # Ноги вместе
+        pygame.draw.line(idle_sheet, (50, 50, 150), 
+                       (center_x - 5, center_y + 20), 
+                       (center_x - 5, center_y + 35), 6)
+        pygame.draw.line(idle_sheet, (50, 50, 150), 
+                       (center_x + 5, center_y + 20), 
+                       (center_x + 5, center_y + 35), 6)
+        
+        # Текст
+        font = pygame.font.Font(None, 32)
+        text = font.render("IDLE", True, (255, 255, 255))
+        idle_sheet.blit(text, (rect.x + frame_w//2 - 20, rect.y + frame_h - 20))
+    
+    # Сохраняем спрайты
+    pygame.image.save(walk_sheet, "walk_spritesheet.png")
+    pygame.image.save(idle_sheet, "idle_spritesheet.png")
+    
+    print("\n=== ДЕМО-СПРАЙТЫ СОЗДАНЫ ===")
+    print("Создан файл: walk_spritesheet.png (4 строки x 3 столбца)")
+    print("Создан файл: idle_spritesheet.png (1 строка x 2 столбца)")
+    print("=============================\n")
+    
+    return "walk_spritesheet.png", "idle_spritesheet.png"

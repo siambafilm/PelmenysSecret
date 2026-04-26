@@ -17,7 +17,7 @@ class PauseMenu(Scene):
         # Настройка кнопок
         font = pg.font.Font(None, 48)
         
-        button_width = 200
+        button_width = 300
         button_height = 50
         start_x = screen.get_width() // 2 - button_width // 2
         start_y = screen.get_height() // 2 - 100
@@ -99,6 +99,9 @@ class PauseMenu(Scene):
     
     def on_continue(self):
         """Продолжить игру"""
+        if self.game_scene:
+            self.game_scene.resume()
+            self.game_scene.escape_pressed = False  # Сбрасываем клавишу ESC
         self.next_scene = "BACK"
     
     def on_save(self):

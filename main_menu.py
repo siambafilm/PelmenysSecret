@@ -178,7 +178,8 @@ class MainMenu(Scene):
     def on_new_game(self):
         """Начало новой игры"""
         print("Начало новой игры...")
-        from game_scene import GameScene
+        #from game_scene import GameScene
+        from level1 import GameScene
         self.next_scene = GameScene(self.screen, load_save=False)
     
     def on_exit(self):

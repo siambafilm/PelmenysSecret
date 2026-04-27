@@ -113,9 +113,7 @@ class MapEditor:
         
         # Дерево (коричневый + зеленый)
         surf = pg.Surface((TILE_SIZE, TILE_SIZE), pg.SRCALPHA)
-        # Ствол
         pg.draw.rect(surf, (101, 67, 33), (TILE_SIZE//2 - 8, TILE_SIZE//2, 16, 24))
-        # Крона
         pg.draw.circle(surf, (34, 139, 34), (TILE_SIZE//2, TILE_SIZE//2 - 5), 20)
         tiles.append(surf)
         
@@ -165,8 +163,43 @@ class MapEditor:
         return tiles
     
     def load_brushes(self):
-        """Загружает доступные кисти"""
+        """Загружает доступные кисти (встроенные + кастомные)"""
         self.brushes = self.editor_tiles
+        # Пытаемся загрузить кастомные тайлы из папки custom_tiles
+        self.load_custom_tiles()
+    
+    def load_custom_tiles(self):
+        """Загружает кастомные тайлы из папки custom_tiles (PNG/JPG, 64x64)"""
+        custom_dir = "custom_tiles"
+        if not os.path.exists(custom_dir):
+            os.makedirs(custom_dir)
+            print(f"Создана папка для кастомных тайлов: {custom_dir}/")
+            print("Поместите туда свои тайлы (PNG/JPG, 64x64 пикселя)")
+            return
+        
+        loaded_count = 0
+        for filename in sorted(os.listdir(custom_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                filepath = os.path.join(custom_dir, filename)
+                try:
+                    surf = pg.image.load(filepath).convert_alpha()
+                    # Проверяем размер
+                    w, h = surf.get_width(), surf.get_height()
+                    if w != TILE_SIZE or h != TILE_SIZE:
+                        print(f"  Предупреждение: {filename} имеет размер {w}x{h}, а не {TILE_SIZE}x{TILE_SIZE}")
+                        print(f"  Масштабируем до {TILE_SIZE}x{TILE_SIZE}")
+                        surf = pg.transform.scale(surf, (TILE_SIZE, TILE_SIZE))
+                    self.brushes.append(surf)
+                    print(f"✓ Загружен кастомный тайл: {filename} (ID: {len(self.brushes)-1})")
+                    loaded_count += 1
+                except Exception as e:
+                    print(f"✗ Ошибка загрузки {filename}: {e}")
+        
+        if loaded_count > 0:
+            print(f"\nЗагружено {loaded_count} кастомных тайлов")
+        else:
+            print(f"\nКастомные тайлы не найдены в папке '{custom_dir}/'")
+            print("  Создайте папку и добавьте туда свои PNG/JPG файлы (64x64)")
     
     def new_map(self, width, height):
         """Создает новую карту"""
@@ -203,7 +236,7 @@ class MapEditor:
             self.collisions = data.get("collisions", [])
             self.camera_x = 0
             self.camera_y = 0
-            print(f"Карта загружена: {filename}")
+            print(f"Карта загружена: {filename} ({self.map_width_tiles}x{self.map_height_tiles})")
             return True
         except Exception as e:
             print(f"Ошибка загрузки карты: {e}")
@@ -371,7 +404,7 @@ class MapEditor:
         status_y = SCREEN_HEIGHT - 60
         pg.draw.line(self.screen, COLOR_UI_BORDER, (WORK_AREA_WIDTH + 10, status_y - 10), (SCREEN_WIDTH - 10, status_y - 10), 1)
         
-        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Тайлов: {len(self.tiles)} | Коллизий: {len(self.collisions)}"
+        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Тайлов: {len(self.tiles)} | Коллизий: {len(self.collisions)} | Кистей: {len(self.brushes)}"
         status_surf = self.font_small.render(status_text, True, COLOR_TEXT)
         self.screen.blit(status_surf, (WORK_AREA_WIDTH + 10, status_y))
         

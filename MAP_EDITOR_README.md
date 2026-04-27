@@ -8,10 +8,12 @@ A powerful tile-based map editor for creating game levels with collision detecti
 - **Collision Painting Mode**: Define walkable and non-walkable areas
 - **Camera Scrolling**: Right-click and drag to navigate large maps
 - **Zoom Support**: Mouse wheel to zoom in/out
-- **Custom Brushes**: 10 different 64x64 tiles to choose from
+- **Custom Brushes**: Load your own PNG/JPG tiles (64x64) from `custom_tiles/`
 - **Save/Load**: Save maps in `.map` JSON format
 
 ## Tile Types
+
+### Built-in Tiles (ID 0-10)
 
 | ID | Type | Description |
 |----|------|-------------|
@@ -26,6 +28,51 @@ A powerful tile-based map editor for creating game levels with collision detecti
 | 8 | Темная трава | Dark grass |
 | 9 | Лава | Lava (impassable) |
 | 10 | Снег | Snow |
+
+### Custom Tiles (ID 11+)
+
+Кастомные тайлы автоматически загружаются из папки `custom_tiles/` при запуске редактора.
+
+**Поддерживаемые форматы:** PNG, JPG, JPEG, BMP, GIF  
+**Требуемый размер:** 64x64 пикселя (автоматически масштабируется при необходимости)
+
+Примеры кастомных тайлов уже созданы в `custom_tiles/`:
+- `crystal.png` - Синий кристалл (ID: 11)
+- `ice.png` - Лед (ID: 12)
+- `fire.png` - Огонь (ID: 13)
+
+## Создание своих тайлов
+
+1. Создайте изображение размером **64x64 пикселя** в любом графическом редакторе
+2. Сохраните в формате PNG или JPG
+3. Поместите файл в папку `custom_tiles/`
+4. Запустите редактор - тайл появится в панели кистей
+
+### Программное создание
+
+Используйте скрипт для создания примеров:
+
+```bash
+python3 create_custom_tile.py
+```
+
+Этот скрипт создаст 3 примера кастомных тайлов в папке `custom_tiles/`.
+
+### Пример кода для создания тайла
+
+```python
+import pygame as pg
+
+pg.init()
+surf = pg.Surface((64, 64), pg.SRCALPHA)
+
+# Рисуем свой тайл
+surf.fill((100, 200, 100))  # Зеленый фон
+pg.draw.circle(surf, (255, 255, 0), (32, 32), 20)  # Желтый круг
+
+# Сохраняем
+pg.image.save(surf, "custom_tiles/my_tile.png")
+```
 
 ## Usage
 
@@ -109,6 +156,7 @@ scene = GameScene(screen, load_save=False, map_file=None)
 2. **Performance**: Only visible tiles are rendered for optimal performance.
 3. **Collisions**: Use collision mode to mark impassable areas (red overlay).
 4. **Testing**: Press 'C' in game to visualize collision areas.
+5. **Custom Tiles**: Add your own PNG/JPG files to `custom_tiles/` folder.
 
 ## Examples
 
@@ -133,6 +181,7 @@ scene = GameScene(screen, map_file="sample_map.map")
 - **Performance issues**: Reduce map size or visible area
 - **Collision not working**: Ensure collision layer is properly defined
 - **Zoom not working**: Some systems may have different mouse wheel behavior
+- **Custom tiles not loading**: Ensure files are in `custom_tiles/` and are valid images
 
 ## Technical Details
 
@@ -141,6 +190,7 @@ scene = GameScene(screen, map_file="sample_map.map")
 - Efficient rendering (only visible tiles)
 - Smooth camera following with interpolation
 - Collision detection via tile lookup
+- Automatic custom tile loading from `custom_tiles/`
 
 ## Future Enhancements
 

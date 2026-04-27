@@ -749,14 +749,14 @@ class MapEditor:
                     sx, sy = self.world_to_screen(wx, wy)
                     if self.mode == "paint":
                         if 0 <= self.selected_brush < len(self.brushes):
-                            brush_scaled = pg.transform.scale(self.brushes[self.selected_brush], (TILE_SIZE, TILE_SIZE))
+                            brush_scaled = pg.transform.scale(self.brushes[self.selected_brush], (self.tile_size, self.tile_size))
                             self.screen.blit(brush_scaled, (sx, sy))
-                        pg.draw.rect(self.screen, COLOR_SELECTED, (sx, sy, TILE_SIZE, TILE_SIZE), 2)
+                        pg.draw.rect(self.screen, COLOR_SELECTED, (sx, sy, self.tile_size, self.tile_size), 2)
                     elif self.mode == "collision":
-                        s = pg.Surface((TILE_SIZE, TILE_SIZE), pg.SRCALPHA)
+                        s = pg.Surface((self.tile_size, self.tile_size), pg.SRCALPHA)
                         s.fill((255, 0, 0, 100))
                         self.screen.blit(s, (sx, sy))
-                        pg.draw.rect(self.screen, (255, 0, 0), (sx, sy, TILE_SIZE, TILE_SIZE), 2)
+                        pg.draw.rect(self.screen, (255, 0, 0), (sx, sy, self.tile_size, self.tile_size), 2)
             
             self.draw_ui()
             

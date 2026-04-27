@@ -403,11 +403,14 @@ class MapEditor:
     
     def save_map(self, filename):
         """Сохраняет карту в файл .map"""
+        # Combine layers for backward compatibility
+        combined_tiles = self.layer1_tiles + self.layer2_tiles
         data = {
             "version": "1.1",  # Обновленная версия с поддержкой слоев
             "width": self.map_width_tiles,
             "height": self.map_height_tiles,
             "tile_size": self.tile_size,
+            "tiles": combined_tiles,  # Combined for backward compatibility
             "layer1_tiles": self.layer1_tiles,
             "layer2_tiles": self.layer2_tiles,
             "collisions": self.collisions

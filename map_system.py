@@ -115,7 +115,14 @@ class TileMap:
             self.width = data.get("width", 20)
             self.height = data.get("height", 15)
             self.tile_size = data.get("tile_size", 64)
+            # Support new two-layer format
+            self.layer1_tiles = data.get("layer1_tiles", [])
+            self.layer2_tiles = data.get("layer2_tiles", [])
+            # Fallback for old maps
             self.tiles = data.get("tiles", [])
+            # Combine layers for rendering
+            if not self.tiles:
+                self.tiles = self.layer1_tiles + self.layer2_tiles
             self.collisions = data.get("collisions", [])
             
             # Пересоздаем тайлы с правильным размером

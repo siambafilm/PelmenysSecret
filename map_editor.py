@@ -38,6 +38,9 @@ class MapEditor:
         self.font_small = pg.font.Font(None, 20)
         self.font_title = pg.font.Font(None, 36)
         
+        # Флаг открытия диалога (чтобы не обрабатывать события Pygame)
+        self.dialog_open = False
+        
         # Режимы редактирования
         self.mode = "paint"  # "paint" или "collision"
         self.eraser_mode = False  # Режим ластика (ПКМ)
@@ -497,6 +500,11 @@ class MapEditor:
     
     def handle_events(self):
         """Обработка событий - returns True to continue, False to quit"""
+        # Если открыт диалог, пропускаем события Pygame
+        if self.dialog_open:
+            pg.event.clear()  # Очищаем очередь событий
+            return True
+        
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return False
@@ -654,11 +662,19 @@ class MapEditor:
     
     def save_map_dialog(self):
         """Диалог сохранения карты"""
+        # Очищаем очередь событий Pygame перед открытием диалога
+        pg.event.clear()
+        
+        self.dialog_open = True
         import tkinter as tk
         from tkinter import filedialog
         
         root = tk.Tk()
         root.withdraw()
+        # Поднимаем диалог на передний план
+        root.lift()
+        root.attributes('-topmost', True)
+        root.focus_force()
         
         filename = filedialog.asksaveasfilename(
             defaultextension=".map",
@@ -670,14 +686,26 @@ class MapEditor:
             self.save_map(filename)
         
         root.destroy()
+        
+        # Очищаем очередь событий Pygame после закрытия диалога
+        pg.event.clear()
+        self.dialog_open = False
     
     def load_map_dialog(self):
         """Диалог загрузки карты"""
+        # Очищаем очередь событий Pygame перед открытием диалога
+        pg.event.clear()
+        
+        self.dialog_open = True
         import tkinter as tk
         from tkinter import filedialog
         
         root = tk.Tk()
         root.withdraw()
+        # Поднимаем диалог на передний план
+        root.lift()
+        root.attributes('-topmost', True)
+        root.focus_force()
         
         filename = filedialog.askopenfilename(
             filetypes=[("Map files", "*.map"), ("All files", "*.*")],
@@ -688,6 +716,10 @@ class MapEditor:
             self.load_map(filename)
         
         root.destroy()
+        
+        # Очищаем очередь событий Pygame после закрытия диалога
+        pg.event.clear()
+        self.dialog_open = False
     
     def run(self):
         """Основной цикл редактора"""

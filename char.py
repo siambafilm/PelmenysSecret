@@ -186,13 +186,13 @@ class Char:
         
         self.direction = [0, 0]
         
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.direction[0] = -1
-        if keys[pygame.K_RIGHT]:
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.direction[0] = 1
-        if keys[pygame.K_UP]:
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
             self.direction[1] = -1
-        if keys[pygame.K_DOWN]:
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
             self.direction[1] = 1
         
         # Нормализация диагонального движения (чтобы скорость не была выше)

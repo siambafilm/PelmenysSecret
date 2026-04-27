@@ -2,6 +2,7 @@ import pygame as pg
 import json
 import sys
 import os
+import copy
 
 # Инициализация Pygame
 pg.init()
@@ -22,6 +23,7 @@ COLOR_BUTTON = (86, 182, 194)
 COLOR_BUTTON_HOVER = (106, 202, 214)
 COLOR_GRID = (60, 64, 72)
 COLOR_COLLISION = (255, 0, 0, 100)
+COLOR_FILL_PREVIEW = (0, 255, 0, 100)
 
 # Вычисляем рабочую область
 def get_work_area_width(screen_width):
@@ -38,12 +40,18 @@ class MapEditor:
         self.font_small = pg.font.Font(None, 20)
         self.font_title = pg.font.Font(None, 36)
         
-        # Флаг открытия диалога (чтобы не обрабатывать события Pygame)
+        # Флаг открытия диалога (чтобы не обрабатывали события Pygame)
         self.dialog_open = False
         
         # Режимы редактирования
-        self.mode = "paint"  # "paint" или "collision"
+        self.mode = "paint"  # "paint", "collision", "fill"
         self.eraser_mode = False  # Режим ластика (ПКМ)
+        
+        # Слои (2 слоя)
+        self.current_layer = 1  # Текущий слой (1 или 2)
+        self.layer1_tiles = []  # Слой 1
+        self.layer2_tiles = []  # Слой 2
+        self.collisions = []  # Коллизии (общие для обоих слоев)
         
         # Настройки карты
         self.map_width_tiles = 20  # по умолчанию
@@ -65,9 +73,16 @@ class MapEditor:
         self.load_brushes()
         self.selected_brush = 0
         
-        # Данные карты
-        self.tiles = []  # Список (x, y, brush_index)
-        self.collisions = []  # Список (x, y, width, height)
+        # Undo/Redo система
+        self.undo_stack = []
+        self.redo_stack = []
+        self.max_history = 50  # Максимальное количество состояний в истории
+        
+        # Copy/Paste система
+        self.clipboard = []  # Список скопированных тайлов [(x, y, brush_idx, layer), ...]
+        self.copy_start_pos = None  # Начальная позиция для выделения при копировании
+        self.copy_end_pos = None  # Конечная позиция для выделения
+        self.is_selecting = False  # Флаг режима выделения
         
         # UI состояние
         self.show_new_map_dialog = False
@@ -98,6 +113,7 @@ class MapEditor:
             "clear": pg.Rect(work_width + 10, 170, 180, 30),
             "mode_paint": pg.Rect(work_width + 10, 210, 180, 30),
             "mode_collision": pg.Rect(work_width + 10, 250, 180, 30),
+            "mode_fill": pg.Rect(work_width + 10, 290, 180, 30),
         }
         
     def create_editor_tiles(self):
@@ -226,23 +242,174 @@ class MapEditor:
             print(f"\nКастомные тайлы не найдены в папке '{custom_dir}/'")
             print("  Создайте папку и добавьте туда свои PNG/JPG файлы (64x64)")
     
+    def save_state(self):
+        """Сохраняет текущее состояние в историю для undo"""
+        state = {
+            'layer1_tiles': copy.deepcopy(self.layer1_tiles),
+            'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'collisions': copy.deepcopy(self.collisions),
+        }
+        self.undo_stack.append(state)
+        if len(self.undo_stack) > self.max_history:
+            self.undo_stack.pop(0)
+        self.redo_stack.clear()  # Очищаем redo при новом действии
+    
+    def undo(self):
+        """Отменяет последнее действие"""
+        if not self.undo_stack:
+            return
+        # Сохраняем текущее состояние в redo
+        current_state = {
+            'layer1_tiles': copy.deepcopy(self.layer1_tiles),
+            'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'collisions': copy.deepcopy(self.collisions),
+        }
+        self.redo_stack.append(current_state)
+        # Восстанавливаем предыдущее состояние
+        prev_state = self.undo_stack.pop()
+        self.layer1_tiles = prev_state['layer1_tiles']
+        self.layer2_tiles = prev_state['layer2_tiles']
+        self.collisions = prev_state['collisions']
+    
+    def redo(self):
+        """Повторяет отмененное действие"""
+        if not self.redo_stack:
+            return
+        # Сохраняем текущее состояние в undo
+        current_state = {
+            'layer1_tiles': copy.deepcopy(self.layer1_tiles),
+            'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'collisions': copy.deepcopy(self.collisions),
+        }
+        self.undo_stack.append(current_state)
+        # Восстанавливаем состояние из redo
+        next_state = self.redo_stack.pop()
+        self.layer1_tiles = next_state['layer1_tiles']
+        self.layer2_tiles = next_state['layer2_tiles']
+        self.collisions = next_state['collisions']
+    
+    def copy_selection(self):
+        """Копирует выделенные тайлы в буфер обмена"""
+        if self.copy_start_pos is None or self.copy_end_pos is None:
+            return
+        
+        x1, y1 = self.copy_start_pos
+        x2, y2 = self.copy_end_pos
+        
+        # Упорядочиваем координаты
+        min_x, max_x = min(x1, x2), max(x1, x2)
+        min_y, max_y = min(y1, y2), max(y1, y2)
+        
+        self.clipboard = []
+        
+        # Копируем тайлы из обоих слоев
+        for tiles, layer_num in [(self.layer1_tiles, 1), (self.layer2_tiles, 2)]:
+            for tx, ty, idx in tiles:
+                if min_x <= tx <= max_x and min_y <= ty <= max_y:
+                    # Сохраняем относительные координаты
+                    self.clipboard.append((tx - min_x, ty - min_y, idx, layer_num))
+        
+        print(f"Скопировано {len(self.clipboard)} тайлов")
+    
+    def paste_tiles(self):
+        """Вставляет тайлы из буфера обмена в текущую позицию мыши"""
+        if not self.clipboard:
+            return
+        
+        mouse_x, mouse_y = pg.mouse.get_pos()
+        if mouse_x >= self.get_work_area_width():
+            return  # Мышь над UI
+        
+        world_x, world_y = self.screen_to_world(mouse_x, mouse_y)
+        
+        self.save_state()  # Сохраняем состояние для undo
+        
+        for rel_x, rel_y, brush_idx, layer_num in self.clipboard:
+            target_x = world_x + rel_x
+            target_y = world_y + rel_y
+            
+            if 0 <= target_x < self.map_width_tiles and 0 <= target_y < self.map_height_tiles:
+                # Вставляем в тот же слой, откуда копировали
+                if layer_num == 1:
+                    self.set_tile_at_layer(target_x, target_y, brush_idx, 1)
+                else:
+                    self.set_tile_at_layer(target_x, target_y, brush_idx, 2)
+        
+        print(f"Вставлено {len(self.clipboard)} тайлов")
+    
+    def flood_fill(self, start_x, start_y, brush_idx):
+        """Заполняет область. Если выделена область, заполняет её прямоугольником, иначе использует обычный flood fill."""
+        if not (0 <= start_x < self.map_width_tiles and 0 <= start_y < self.map_height_tiles):
+            return
+        
+        # Если есть выделенная область, заполняем её прямоугольником
+        if self.copy_start_pos and self.copy_end_pos:
+            x1, y1 = self.copy_start_pos
+            x2, y2 = self.copy_end_pos
+            min_x, max_x = min(x1, x2), max(x1, x2)
+            min_y, max_y = min(y1, y2), max(y1, y2)
+            self.save_state()
+            for x in range(min_x, max_x + 1):
+                for y in range(min_y, max_y + 1):
+                    self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
+            # Сбросить выделение после заливки
+            self.copy_start_pos = None
+            self.copy_end_pos = None
+            return
+        
+        # Обычный flood fill
+        current_tiles = self.layer1_tiles if self.current_layer == 1 else self.layer2_tiles
+        target_tile = None
+        for tx, ty, idx in current_tiles:
+            if tx == start_x and ty == start_y:
+                target_tile = idx
+                break
+        
+        if target_tile == brush_idx:
+            return
+        
+        self.save_state()
+        queue = [(start_x, start_y)]
+        visited = set()
+        visited.add((start_x, start_y))
+        
+        while queue:
+            x, y = queue.pop(0)
+            self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < self.map_width_tiles and 0 <= ny < self.map_height_tiles and (nx, ny) not in visited):
+                    neighbor_tile = None
+                    for tx, ty, idx in current_tiles:
+                        if tx == nx and ty == ny:
+                            neighbor_tile = idx
+                            break
+                    if neighbor_tile == target_tile:
+                        visited.add((nx, ny))
+                        queue.append((nx, ny))
+    
     def new_map(self, width, height):
         """Создает новую карту"""
         self.map_width_tiles = max(5, min(100, width))
         self.map_height_tiles = max(5, min(100, height))
-        self.tiles = []
+        self.layer1_tiles = []
+        self.layer2_tiles = []
         self.collisions = []
         self.camera_x = 0
         self.camera_y = 0
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.clipboard.clear()
     
     def save_map(self, filename):
         """Сохраняет карту в файл .map"""
         data = {
-            "version": "1.0",
+            "version": "1.1",  # Обновленная версия с поддержкой слоев
             "width": self.map_width_tiles,
             "height": self.map_height_tiles,
             "tile_size": self.tile_size,
-            "tiles": self.tiles,
+            "layer1_tiles": self.layer1_tiles,
+            "layer2_tiles": self.layer2_tiles,
             "collisions": self.collisions
         }
         with open(filename, 'w') as f:
@@ -257,30 +424,55 @@ class MapEditor:
             self.map_width_tiles = data.get("width", 20)
             self.map_height_tiles = data.get("height", 15)
             self.tile_size = data.get("tile_size", TILE_SIZE)
-            self.tiles = data.get("tiles", [])
+            
+            # Поддержка старых карт (только один слой)
+            if "layer1_tiles" in data:
+                self.layer1_tiles = data.get("layer1_tiles", [])
+                self.layer2_tiles = data.get("layer2_tiles", [])
+            else:
+                # Старый формат - переносим в слой 1
+                self.layer1_tiles = data.get("tiles", [])
+                self.layer2_tiles = []
+            
             self.collisions = data.get("collisions", [])
             self.camera_x = 0
             self.camera_y = 0
+            self.undo_stack.clear()
+            self.redo_stack.clear()
             print(f"Карта загружена: {filename} ({self.map_width_tiles}x{self.map_height_tiles})")
             return True
         except Exception as e:
             print(f"Ошибка загрузки карты: {e}")
             return False
     
-    def get_tile_at(self, x, y):
-        """Получает тайл по координатам"""
-        for tx, ty, idx in self.tiles:
+    def get_tile_at_layer(self, x, y, layer):
+        """Получает тайл по координатам на указанном слое"""
+        tiles = self.layer1_tiles if layer == 1 else self.layer2_tiles
+        for tx, ty, idx in tiles:
             if tx == x and ty == y:
                 return idx
         return None
     
-    def set_tile(self, x, y, brush_idx):
-        """Устанавливает тайл"""
+    def get_tile_at(self, x, y):
+        """Получает тайл по координатам (для обратной совместимости)"""
+        return self.get_tile_at_layer(x, y, self.current_layer)
+    
+    def set_tile_at_layer(self, x, y, brush_idx, layer):
+        """Устанавливает тайл на указанном слое"""
+        tiles = self.layer1_tiles if layer == 1 else self.layer2_tiles
         # Удаляем старый тайл на этой позиции
-        self.tiles = [(tx, ty, idx) for tx, ty, idx in self.tiles if not (tx == x and ty == y)]
+        new_tiles = [(tx, ty, idx) for tx, ty, idx in tiles if not (tx == x and ty == y)]
         # Добавляем новый
         if brush_idx >= 0:
-            self.tiles.append((x, y, brush_idx))
+            new_tiles.append((x, y, brush_idx))
+        if layer == 1:
+            self.layer1_tiles = new_tiles
+        else:
+            self.layer2_tiles = new_tiles
+    
+    def set_tile(self, x, y, brush_idx):
+        """Устанавливает тайл на текущем слое"""
+        self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
     
     def toggle_collision(self, x, y):
         """Переключает коллизию на тайле"""
@@ -327,7 +519,7 @@ class MapEditor:
                 self.screen.blit(s, (0, y))
     
     def draw_tiles(self):
-        """Рисует все тайлы с учетом текущего масштаба"""
+        """Рисует все тайлы с учетом текущего масштаба и прозрачности слоев"""
         # Вычисляем видимую область
         work_width = self.get_work_area_width()
         start_x = max(0, self.camera_x // self.tile_size)
@@ -335,14 +527,38 @@ class MapEditor:
         end_x = min(self.map_width_tiles, (self.camera_x + work_width) // self.tile_size + 1)
         end_y = min(self.map_height_tiles, (self.camera_y + self.screen_height) // self.tile_size + 1)
         
-        # Рисуем тайлы
-        for x, y, idx in self.tiles:
+        # Определяем прозрачность слоев
+        if self.current_layer == 1:
+            layer1_alpha = 255
+            layer2_alpha = 100  # Полупрозрачный
+        else:
+            layer1_alpha = 100  # Полупрозрачный
+            layer2_alpha = 255
+        
+        # Рисуем тайлы слоя 1
+        for x, y, idx in self.layer1_tiles:
             if start_x <= x < end_x and start_y <= y < end_y:
                 screen_x = x * self.tile_size - self.camera_x
                 screen_y = y * self.tile_size - self.camera_y
                 if 0 <= idx < len(self.brushes):
                     # Масштабируем кисть до текущего размера тайла
                     scaled_brush = pg.transform.scale(self.brushes[idx], (self.tile_size, self.tile_size))
+                    if layer1_alpha < 255:
+                        scaled_brush = scaled_brush.copy()
+                        scaled_brush.set_alpha(layer1_alpha)
+                    self.screen.blit(scaled_brush, (screen_x, screen_y))
+        
+        # Рисуем тайлы слоя 2
+        for x, y, idx in self.layer2_tiles:
+            if start_x <= x < end_x and start_y <= y < end_y:
+                screen_x = x * self.tile_size - self.camera_x
+                screen_y = y * self.tile_size - self.camera_y
+                if 0 <= idx < len(self.brushes):
+                    # Масштабируем кисть до текущего размера тайла
+                    scaled_brush = pg.transform.scale(self.brushes[idx], (self.tile_size, self.tile_size))
+                    if layer2_alpha < 255:
+                        scaled_brush = scaled_brush.copy()
+                        scaled_brush.set_alpha(layer2_alpha)
                     self.screen.blit(scaled_brush, (screen_x, screen_y))
     
     def draw_collisions(self):
@@ -364,6 +580,29 @@ class MapEditor:
                 # Контур
                 pg.draw.rect(self.screen, (255, 0, 0),
                            (screen_x, screen_y, cw * self.tile_size, ch * self.tile_size), 1)
+    
+    def draw_selection(self):
+        """Рисует выделение для copy/paste"""
+        if self.copy_start_pos and self.copy_end_pos:
+            x1, y1 = self.copy_start_pos
+            x2, y2 = self.copy_end_pos
+            
+            min_x, max_x = min(x1, x2), max(x1, x2)
+            min_y, max_y = min(y1, y2), max(y1, y2)
+            
+            # Переводим в экранные координаты
+            sx1 = min_x * self.tile_size - self.camera_x
+            sy1 = min_y * self.tile_size - self.camera_y
+            sx2 = (max_x + 1) * self.tile_size - self.camera_x
+            sy2 = (max_y + 1) * self.tile_size - self.camera_y
+            
+            # Рисуем прямоугольник выделения
+            rect = pg.Rect(sx1, sy1, sx2 - sx1, sy2 - sy1)
+            pg.draw.rect(self.screen, (255, 255, 0), rect, 2)
+            # Полупрозрачная заливка
+            s = pg.Surface((sx2 - sx1, sy2 - sy1), pg.SRCALPHA)
+            s.fill((255, 255, 0, 50))
+            self.screen.blit(s, (sx1, sy1))
     
     def draw_ui(self):
         """Рисует интерфейс"""
@@ -394,31 +633,50 @@ class MapEditor:
                 "load": "Загрузить",
                 "clear": "Очистить",
                 "mode_paint": "Режим: Кисть",
-                "mode_collision": "Режим: Коллизия"
+                "mode_collision": "Режим: Коллизия",
+                "mode_fill": "Режим: Заливка (F)"
             }
             text = self.font_small.render(text_map[name], True, COLOR_TEXT)
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
         
         # Индикатор режима
-        mode_text = "Режим: Рисование" if self.mode == "paint" else "Режим: Коллизия"
-        mode_color = (100, 255, 100) if self.mode == "paint" else (255, 100, 100)
+        mode_text = ""
+        mode_color = (255, 255, 255)
+        if self.mode == "paint":
+            mode_text = "Режим: Рисование"
+            mode_color = (100, 255, 100)
+        elif self.mode == "collision":
+            mode_text = "Режим: Коллизия"
+            mode_color = (255, 100, 100)
+        elif self.mode == "fill":
+            mode_text = "Режим: Заливка"
+            mode_color = (100, 100, 255)
+        
         mode_surf = self.font.render(mode_text, True, mode_color)
         work_width = self.get_work_area_width()
-        self.screen.blit(mode_surf, (work_width + 10, 310))
+        self.screen.blit(mode_surf, (work_width + 10, 330))
+        
+        # Индикатор текущего слоя
+        layer_status = "активен" if self.current_layer == 1 else "полупрозр."
+        other_status = "полупрозр." if self.current_layer == 1 else "активен"
+        layer_text = f"Слой: {self.current_layer} [{layer_status} / {other_status}]"
+        layer_color = (255, 200, 100) if self.current_layer == 1 else (100, 200, 255)
+        layer_surf = self.font.render(layer_text, True, layer_color)
+        self.screen.blit(layer_surf, (work_width + 10, 355))
         
         # Разделитель
         work_width = self.get_work_area_width()
-        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, 340), (self.screen_width - 10, 340), 1)
+        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, 385), (self.screen_width - 10, 385), 1)
         
         # Заголовок кистей
         work_width = self.get_work_area_width()
         brushes_title = self.font.render("Кисти (64x64):", True, COLOR_TEXT)
-        self.screen.blit(brushes_title, (work_width + 10, 350))
+        self.screen.blit(brushes_title, (work_width + 10, 395))
         
         # Кисти с прокруткой
         work_width = self.get_work_area_width()
-        brush_start_y = 380
+        brush_start_y = 425
         # Ограничиваем scroll
         max_scroll = max(0, len(self.brushes) // 2 * 70 - self.brush_area_height)
         self.brush_scroll_y = max(0, min(self.brush_scroll_y, max_scroll))
@@ -445,18 +703,23 @@ class MapEditor:
         
         # Статус
         work_width = self.get_work_area_width()
-        status_y = self.screen_height - 60
+        status_y = self.screen_height - 80
         pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, status_y - 10), (self.screen_width - 10, status_y - 10), 1)
         
-        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Тайлов: {len(self.tiles)} | Коллизий: {len(self.collisions)} | Кистей: {len(self.brushes)}"
+        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Слой1: {len(self.layer1_tiles)} | Слой2: {len(self.layer2_tiles)} | Коллизий: {len(self.collisions)}"
         status_surf = self.font_small.render(status_text, True, COLOR_TEXT)
         self.screen.blit(status_surf, (work_width + 10, status_y))
         
-        # Подсказка
+        # Подсказка с горячими клавишами
         work_width = self.get_work_area_width()
-        hint_text = "СКМ - камера | ПКМ - ластик | Колесо - масштаб/прокрутка кистей | Пробел - режим"
-        hint_surf = self.font_small.render(hint_text, True, (150, 150, 150))
-        self.screen.blit(hint_surf, (work_width + 10, self.screen_height - 25))
+        hint_lines = [
+            "1/2 - смена слоя | F - заливка | Пробел - режим",
+            "Ctrl+Z/Y - undo/redo | C - выделить | Ctrl+V - вставить",
+            "СКМ - камера | ПКМ - ластик | Колесо - масштаб"
+        ]
+        for i, hint in enumerate(hint_lines):
+            hint_surf = self.font_small.render(hint, True, (150, 150, 150))
+            self.screen.blit(hint_surf, (work_width + 10, self.screen_height - 60 + i * 18))
     
     def draw_new_map_dialog(self):
         """Рисует диалог создания новой карты"""
@@ -524,14 +787,28 @@ class MapEditor:
                 if event.button == 1:  # Левая кнопка
                     if event.pos[0] < self.get_work_area_width():
                         # Рабочая область
-                        if self.mode == "paint":
+                        if self.is_selecting:
+                            # Режим выделения - устанавливаем конечную точку
+                            wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
+                            self.copy_end_pos = (wx, wy)
+                            # Автоматически копируем после выделения
+                            if self.copy_start_pos:
+                                self.copy_selection()
+                                self.is_selecting = False
+                        elif self.mode == "paint":
                             wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
                             if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
+                                self.save_state()
                                 self.set_tile(wx, wy, self.selected_brush)
                         elif self.mode == "collision":
                             wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
                             if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
+                                self.save_state()
                                 self.toggle_collision(wx, wy)
+                        elif self.mode == "fill":
+                            wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
+                            if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
+                                self.flood_fill(wx, wy, self.selected_brush)
                     else:
                         # Проверка кнопок
                         button_clicked = False
@@ -544,7 +821,7 @@ class MapEditor:
                         if not button_clicked:
                             # Проверка кистей
                             work_width = self.get_work_area_width()
-                            brush_start_y = 380
+                            brush_start_y = 425
                             for i in range(len(self.brushes)):
                                 x = work_width + 10 + (i % 2) * 85
                                 y = brush_start_y + (i // 2) * 70 - self.brush_scroll_y
@@ -557,10 +834,12 @@ class MapEditor:
                     self.dragging_camera = True
                     self.drag_start_x = event.pos[0]
                     self.drag_start_y = event.pos[1]
+                
                 elif event.button == 3:  # Правая кнопка - стирание в режиме рисования
                     if self.mode == "paint" and event.pos[0] < self.get_work_area_width():
                         wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
                         if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
+                            self.save_state()
                             self.set_tile(wx, wy, -1)  # -1 означает удаление тайла
                 
                 elif event.button == 4:  # Скролл вверх
@@ -568,7 +847,7 @@ class MapEditor:
                     mouse_x, mouse_y = event.pos if hasattr(event, 'pos') else pg.mouse.get_pos()
                     work_width = self.get_work_area_width()
                     if (work_width + 10 <= mouse_x <= work_width + UI_PANEL_WIDTH - 10 and
-                        380 <= mouse_y <= 380 + self.brush_area_height):
+                         425 <= mouse_y <= 425 + self.brush_area_height):
                         self.brush_scroll_y = max(0, self.brush_scroll_y - 70)
                     else:
                         self.tile_size = min(128, self.tile_size + 8)
@@ -577,7 +856,7 @@ class MapEditor:
                     mouse_x, mouse_y = event.pos if hasattr(event, 'pos') else pg.mouse.get_pos()
                     work_width = self.get_work_area_width()
                     if (work_width + 10 <= mouse_x <= work_width + UI_PANEL_WIDTH - 10 and
-                        380 <= mouse_y <= 380 + self.brush_area_height):
+                         425 <= mouse_y <= 425 + self.brush_area_height):
                         max_scroll = max(0, len(self.brushes) // 2 * 70 - self.brush_area_height)
                         self.brush_scroll_y = min(max_scroll, self.brush_scroll_y + 70)
                     else:
@@ -597,15 +876,62 @@ class MapEditor:
                     self.camera_y = max(0, self.camera_y - dy)
                     self.drag_start_x = event.pos[0]
                     self.drag_start_y = event.pos[1]
+                elif self.is_selecting and event.pos[0] < self.get_work_area_width():
+                    # Обновляем конечную точку выделения для предпросмотра
+                    wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
+                    self.copy_end_pos = (wx, wy)
             
             elif event.type == pg.KEYDOWN:
-                if event.key == pg.K_SPACE:
-                    self.mode = "collision" if self.mode == "paint" else "paint"
-                elif event.key == pg.K_ESCAPE:
-                    if self.show_new_map_dialog:
-                        self.show_new_map_dialog = False
-                    else:
-                        return False
+                # Ctrl комбинации
+                mods = pg.key.get_mods()
+                ctrl_pressed = mods & pg.KMOD_CTRL
+                
+                if ctrl_pressed:
+                    if event.key == pg.K_z:  # Ctrl+Z - Undo
+                        self.undo()
+                    elif event.key == pg.K_y:  # Ctrl+Y - Redo
+                        self.redo()
+                    elif event.key == pg.K_c:  # Ctrl+C - Copy
+                        if self.copy_start_pos:
+                            self.copy_selection()
+                            self.is_selecting = False
+                    elif event.key == pg.K_v:  # Ctrl+V - Paste
+                        self.paste_tiles()
+                else:
+                    # Обычные клавиши
+                    if event.key == pg.K_SPACE:
+                        # Переключение режима: paint -> collision -> fill -> paint
+                        if self.mode == "paint":
+                            self.mode = "collision"
+                        elif self.mode == "collision":
+                            self.mode = "fill"
+                        else:
+                            self.mode = "paint"
+                    elif event.key == pg.K_f:  # F - режим заливки
+                        self.mode = "fill"
+                    elif event.key == pg.K_1:  # 1 - слой 1
+                        self.current_layer = 1
+                        print("Активен слой 1")
+                    elif event.key == pg.K_2:  # 2 - слой 2
+                        self.current_layer = 2
+                        print("Активен слой 2")
+                    elif event.key == pg.K_c:  # C - начать выделение
+                        if not self.is_selecting:
+                            self.is_selecting = True
+                            mx, my = pg.mouse.get_pos()
+                            self.copy_start_pos = self.screen_to_world(mx, my)
+                            self.copy_end_pos = None
+                    elif event.key == pg.K_ESCAPE:
+                        if self.show_new_map_dialog:
+                            self.show_new_map_dialog = False
+                        else:
+                            # Отменить выделение, если активно
+                            if self.is_selecting:
+                                self.is_selecting = False
+                                self.copy_start_pos = None
+                                self.copy_end_pos = None
+                            else:
+                                return False
         
         return True  # Continue running
     
@@ -620,12 +946,16 @@ class MapEditor:
         elif name == "load":
             self.load_map_dialog()
         elif name == "clear":
-            self.tiles = []
+            self.save_state()
+            self.layer1_tiles = []
+            self.layer2_tiles = []
             self.collisions = []
         elif name == "mode_paint":
             self.mode = "paint"
         elif name == "mode_collision":
             self.mode = "collision"
+        elif name == "mode_fill":
+            self.mode = "fill"
     
     def handle_new_map_dialog(self, event):
         """Обработка событий диалога новой карты"""
@@ -741,6 +1071,7 @@ class MapEditor:
             self.draw_grid()
             self.draw_tiles()
             self.draw_collisions()
+            self.draw_selection()
             
             # Курсор
             if pg.mouse.get_pos()[0] < work_width:
@@ -757,6 +1088,11 @@ class MapEditor:
                         s.fill((255, 0, 0, 100))
                         self.screen.blit(s, (sx, sy))
                         pg.draw.rect(self.screen, (255, 0, 0), (sx, sy, self.tile_size, self.tile_size), 2)
+                    elif self.mode == "fill":
+                        s = pg.Surface((self.tile_size, self.tile_size), pg.SRCALPHA)
+                        s.fill(COLOR_FILL_PREVIEW)
+                        self.screen.blit(s, (sx, sy))
+                        pg.draw.rect(self.screen, (0, 255, 0), (sx, sy, self.tile_size, self.tile_size), 2)
             
             self.draw_ui()
             

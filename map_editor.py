@@ -9,9 +9,8 @@ pg.init()
 # Константы
 TILE_SIZE = 64
 UI_PANEL_WIDTH = 200
-SCREEN_WIDTH = 1024
-SCREEN_HEIGHT = 768
-WORK_AREA_WIDTH = SCREEN_WIDTH - UI_PANEL_WIDTH
+INITIAL_SCREEN_WIDTH = 1024
+INITIAL_SCREEN_HEIGHT = 768
 
 # Цвета
 COLOR_BG = (40, 44, 52)
@@ -24,9 +23,15 @@ COLOR_BUTTON_HOVER = (106, 202, 214)
 COLOR_GRID = (60, 64, 72)
 COLOR_COLLISION = (255, 0, 0, 100)
 
+# Вычисляем рабочую область
+def get_work_area_width(screen_width):
+    return screen_width - UI_PANEL_WIDTH
+
 class MapEditor:
     def __init__(self):
-        self.screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.screen_width = INITIAL_SCREEN_WIDTH
+        self.screen_height = INITIAL_SCREEN_HEIGHT
+        self.screen = pg.display.set_mode((self.screen_width, self.screen_height), pg.RESIZABLE)
         pg.display.set_caption("PelmenysSecret - Map Editor")
         self.clock = pg.time.Clock()
         self.font = pg.font.Font(None, 24)
@@ -35,6 +40,7 @@ class MapEditor:
         
         # Режимы редактирования
         self.mode = "paint"  # "paint" или "collision"
+        self.eraser_mode = False  # Режим ластика (ПКМ)
         
         # Настройки карты
         self.map_width_tiles = 20  # по умолчанию
@@ -47,6 +53,9 @@ class MapEditor:
         self.dragging_camera = False
         self.drag_start_x = 0
         self.drag_start_y = 0
+        
+        # Тайлсет для редактора (создаем программно)
+        self.editor_tiles = self.create_editor_tiles()
         
         # Доступные тайлы (кисти)
         self.brushes = []
@@ -62,18 +71,31 @@ class MapEditor:
         self.new_map_width = "20"
         self.new_map_height = "15"
         
-        # Кнопки
-        self.buttons = {
-            "new": pg.Rect(10, 50, 180, 30),
-            "save": pg.Rect(10, 90, 180, 30),
-            "load": pg.Rect(10, 130, 180, 30),
-            "clear": pg.Rect(10, 170, 180, 30),
-            "mode_paint": pg.Rect(10, 220, 180, 30),
-            "mode_collision": pg.Rect(10, 260, 180, 30),
-        }
+        # Скролл кистей
+        self.brush_scroll_y = 0
+        self.brush_area_height = 300  # Высота области кистей
         
-        # Тайлсет для редактора (создаем программно)
-        self.editor_tiles = self.create_editor_tiles()
+        # Кнопки (позиции будут обновляться динамически)
+        self.update_ui_rects()
+        
+        # Флаг для отключения кисти при наведении на UI
+        self.mouse_over_ui = False
+        
+    def get_work_area_width(self):
+        """Возвращает ширину рабочей области"""
+        return self.screen_width - UI_PANEL_WIDTH
+    
+    def update_ui_rects(self):
+        """Обновляет прямоугольники кнопок в зависимости от размера окна"""
+        work_width = self.get_work_area_width()
+        self.buttons = {
+            "new": pg.Rect(work_width + 10, 50, 180, 30),
+            "save": pg.Rect(work_width + 10, 90, 180, 30),
+            "load": pg.Rect(work_width + 10, 130, 180, 30),
+            "clear": pg.Rect(work_width + 10, 170, 180, 30),
+            "mode_paint": pg.Rect(work_width + 10, 210, 180, 30),
+            "mode_collision": pg.Rect(work_width + 10, 250, 180, 30),
+        }
         
     def create_editor_tiles(self):
         """Создает тайлы для редактора программно"""
@@ -174,7 +196,7 @@ class MapEditor:
         if not os.path.exists(custom_dir):
             os.makedirs(custom_dir)
             print(f"Создана папка для кастомных тайлов: {custom_dir}/")
-            print("Поместите туда свои тайлы (PNG/JPG, 64x64 пикселя)")
+            print("Поместите туда свои тайлы (PNG/JPG, 64x64 пикселей)")
             return
         
         loaded_count = 0
@@ -281,32 +303,34 @@ class MapEditor:
     
     def draw_grid(self):
         """Рисует сетку рабочей области"""
+        work_width = self.get_work_area_width()
         start_x = (self.camera_x // self.tile_size) * self.tile_size - self.camera_x
         start_y = (self.camera_y // self.tile_size) * self.tile_size - self.camera_y
         
-        for x in range(int(start_x), WORK_AREA_WIDTH, self.tile_size):
+        for x in range(int(start_x), work_width, self.tile_size):
             alpha = 50 if x % (self.tile_size * 5) != 0 else 100
             color = list(COLOR_GRID) + [alpha]
             if len(color) == 4:
-                s = pg.Surface((1, SCREEN_HEIGHT))
+                s = pg.Surface((1, self.screen_height))
                 s.fill(color)
                 self.screen.blit(s, (x, 0))
         
-        for y in range(int(start_y), SCREEN_HEIGHT, self.tile_size):
+        for y in range(int(start_y), self.screen_height, self.tile_size):
             alpha = 50 if y % (self.tile_size * 5) != 0 else 100
             color = list(COLOR_GRID) + [alpha]
             if len(color) == 4:
-                s = pg.Surface((WORK_AREA_WIDTH, 1))
+                s = pg.Surface((work_width, 1))
                 s.fill(color)
                 self.screen.blit(s, (0, y))
     
     def draw_tiles(self):
-        """Рисует все тайлы"""
+        """Рисует все тайлы с учетом текущего масштаба"""
         # Вычисляем видимую область
+        work_width = self.get_work_area_width()
         start_x = max(0, self.camera_x // self.tile_size)
         start_y = max(0, self.camera_y // self.tile_size)
-        end_x = min(self.map_width_tiles, (self.camera_x + WORK_AREA_WIDTH) // self.tile_size + 1)
-        end_y = min(self.map_height_tiles, (self.camera_y + SCREEN_HEIGHT) // self.tile_size + 1)
+        end_x = min(self.map_width_tiles, (self.camera_x + work_width) // self.tile_size + 1)
+        end_y = min(self.map_height_tiles, (self.camera_y + self.screen_height) // self.tile_size + 1)
         
         # Рисуем тайлы
         for x, y, idx in self.tiles:
@@ -314,14 +338,17 @@ class MapEditor:
                 screen_x = x * self.tile_size - self.camera_x
                 screen_y = y * self.tile_size - self.camera_y
                 if 0 <= idx < len(self.brushes):
-                    self.screen.blit(self.brushes[idx], (screen_x, screen_y))
+                    # Масштабируем кисть до текущего размера тайла
+                    scaled_brush = pg.transform.scale(self.brushes[idx], (self.tile_size, self.tile_size))
+                    self.screen.blit(scaled_brush, (screen_x, screen_y))
     
     def draw_collisions(self):
         """Рисует коллизии"""
+        work_width = self.get_work_area_width()
         start_x = max(0, self.camera_x // self.tile_size)
         start_y = max(0, self.camera_y // self.tile_size)
-        end_x = min(self.map_width_tiles, (self.camera_x + WORK_AREA_WIDTH) // self.tile_size + 1)
-        end_y = min(self.map_height_tiles, (self.camera_y + SCREEN_HEIGHT) // self.tile_size + 1)
+        end_x = min(self.map_width_tiles, (self.camera_x + work_width) // self.tile_size + 1)
+        end_y = min(self.map_height_tiles, (self.camera_y + self.screen_height) // self.tile_size + 1)
         
         for cx, cy, cw, ch in self.collisions:
             if start_x <= cx < end_x and start_y <= cy < end_y:
@@ -332,21 +359,22 @@ class MapEditor:
                 s.fill((255, 0, 0, 100))
                 self.screen.blit(s, (screen_x, screen_y))
                 # Контур
-                pg.draw.rect(self.screen, (255, 0, 0), 
+                pg.draw.rect(self.screen, (255, 0, 0),
                            (screen_x, screen_y, cw * self.tile_size, ch * self.tile_size), 1)
     
     def draw_ui(self):
         """Рисует интерфейс"""
         # Фон панели
-        pg.draw.rect(self.screen, COLOR_UI_BG, (WORK_AREA_WIDTH, 0, UI_PANEL_WIDTH, SCREEN_HEIGHT))
-        pg.draw.line(self.screen, COLOR_UI_BORDER, (WORK_AREA_WIDTH, 0), (WORK_AREA_WIDTH, SCREEN_HEIGHT), 2)
+        work_width = self.get_work_area_width()
+        pg.draw.rect(self.screen, COLOR_UI_BG, (work_width, 0, UI_PANEL_WIDTH, self.screen_height))
+        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width, 0), (work_width, self.screen_height), 2)
         
         # Заголовок
         title = self.font_title.render("Map Editor", True, COLOR_TEXT)
-        self.screen.blit(title, (WORK_AREA_WIDTH + 10, 10))
+        self.screen.blit(title, (work_width + 10, 10))
         
         # Разделитель
-        pg.draw.line(self.screen, COLOR_UI_BORDER, (WORK_AREA_WIDTH + 10, 45), (SCREEN_WIDTH - 10, 45), 1)
+        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, 45), (self.screen_width - 10, 45), 1)
         
         # Кнопки
         mouse_pos = pg.mouse.get_pos()
@@ -373,20 +401,32 @@ class MapEditor:
         mode_text = "Режим: Рисование" if self.mode == "paint" else "Режим: Коллизия"
         mode_color = (100, 255, 100) if self.mode == "paint" else (255, 100, 100)
         mode_surf = self.font.render(mode_text, True, mode_color)
-        self.screen.blit(mode_surf, (WORK_AREA_WIDTH + 10, 310))
+        work_width = self.get_work_area_width()
+        self.screen.blit(mode_surf, (work_width + 10, 310))
         
         # Разделитель
-        pg.draw.line(self.screen, COLOR_UI_BORDER, (WORK_AREA_WIDTH + 10, 340), (SCREEN_WIDTH - 10, 340), 1)
+        work_width = self.get_work_area_width()
+        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, 340), (self.screen_width - 10, 340), 1)
         
         # Заголовок кистей
+        work_width = self.get_work_area_width()
         brushes_title = self.font.render("Кисти (64x64):", True, COLOR_TEXT)
-        self.screen.blit(brushes_title, (WORK_AREA_WIDTH + 10, 350))
+        self.screen.blit(brushes_title, (work_width + 10, 350))
         
-        # Кисти
+        # Кисти с прокруткой
+        work_width = self.get_work_area_width()
         brush_start_y = 380
+        # Ограничиваем scroll
+        max_scroll = max(0, len(self.brushes) // 2 * 70 - self.brush_area_height)
+        self.brush_scroll_y = max(0, min(self.brush_scroll_y, max_scroll))
+        
         for i, brush in enumerate(self.brushes):
-            x = WORK_AREA_WIDTH + 10 + (i % 2) * 85
-            y = brush_start_y + (i // 2) * 70
+            x = work_width + 10 + (i % 2) * 85
+            y = brush_start_y + (i // 2) * 70 - self.brush_scroll_y
+            
+            # Пропускаем кисти, которые не видны
+            if y + TILE_SIZE < brush_start_y or y > brush_start_y + self.brush_area_height:
+                continue
             
             # Рамка
             border_color = COLOR_SELECTED if i == self.selected_brush else COLOR_UI_BORDER
@@ -401,27 +441,29 @@ class MapEditor:
             self.screen.blit(num_text, (x + 2, y + TILE_SIZE + 5))
         
         # Статус
-        status_y = SCREEN_HEIGHT - 60
-        pg.draw.line(self.screen, COLOR_UI_BORDER, (WORK_AREA_WIDTH + 10, status_y - 10), (SCREEN_WIDTH - 10, status_y - 10), 1)
+        work_width = self.get_work_area_width()
+        status_y = self.screen_height - 60
+        pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, status_y - 10), (self.screen_width - 10, status_y - 10), 1)
         
         status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Тайлов: {len(self.tiles)} | Коллизий: {len(self.collisions)} | Кистей: {len(self.brushes)}"
         status_surf = self.font_small.render(status_text, True, COLOR_TEXT)
-        self.screen.blit(status_surf, (WORK_AREA_WIDTH + 10, status_y))
+        self.screen.blit(status_surf, (work_width + 10, status_y))
         
         # Подсказка
-        hint_text = "ПКМ - камера | Пробел - переключить режим"
+        work_width = self.get_work_area_width()
+        hint_text = "СКМ - камера | ПКМ - ластик | Колесо - масштаб/прокрутка кистей | Пробел - режим"
         hint_surf = self.font_small.render(hint_text, True, (150, 150, 150))
-        self.screen.blit(hint_surf, (WORK_AREA_WIDTH + 10, SCREEN_HEIGHT - 25))
+        self.screen.blit(hint_surf, (work_width + 10, self.screen_height - 25))
     
     def draw_new_map_dialog(self):
         """Рисует диалог создания новой карты"""
-        overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pg.SRCALPHA)
+        overlay = pg.Surface((self.screen_width, self.screen_height), pg.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
         
         dialog_w, dialog_h = 300, 150
-        dialog_x = (SCREEN_WIDTH - dialog_w) // 2
-        dialog_y = (SCREEN_HEIGHT - dialog_h) // 2
+        dialog_x = (self.screen_width - dialog_w) // 2
+        dialog_y = (self.screen_height - dialog_h) // 2
         
         pg.draw.rect(self.screen, COLOR_UI_BG, (dialog_x, dialog_y, dialog_w, dialog_h), border_radius=10)
         pg.draw.rect(self.screen, COLOR_UI_BORDER, (dialog_x, dialog_y, dialog_w, dialog_h), 2, border_radius=10)
@@ -454,10 +496,17 @@ class MapEditor:
         return ok_rect, cancel_rect
     
     def handle_events(self):
-        """Обработка событий"""
+        """Обработка событий - returns True to continue, False to quit"""
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return False
+            
+            if event.type == pg.VIDEORESIZE:
+                # Обработка изменения размера окна
+                self.screen_width = max(event.w, 800)
+                self.screen_height = max(event.h, 600)
+                self.screen = pg.display.set_mode((self.screen_width, self.screen_height), pg.RESIZABLE)
+                self.update_ui_rects()
             
             if self.show_new_map_dialog:
                 self.handle_new_map_dialog(event)
@@ -465,7 +514,7 @@ class MapEditor:
             
             if event.type == pg.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Левая кнопка
-                    if event.pos[0] < WORK_AREA_WIDTH:
+                    if event.pos[0] < self.get_work_area_width():
                         # Рабочая область
                         if self.mode == "paint":
                             wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
@@ -477,34 +526,60 @@ class MapEditor:
                                 self.toggle_collision(wx, wy)
                     else:
                         # Проверка кнопок
+                        button_clicked = False
                         for name, rect in self.buttons.items():
                             if rect.collidepoint(event.pos):
                                 self.handle_button(name)
+                                button_clicked = True
                                 break
-                        # Проверка кистей
-                        brush_start_y = 380
-                        for i in range(len(self.brushes)):
-                            x = WORK_AREA_WIDTH + 10 + (i % 2) * 85
-                            y = brush_start_y + (i // 2) * 70
-                            rect = pg.Rect(x - 2, y - 2, TILE_SIZE + 4, TILE_SIZE + 4)
-                            if rect.collidepoint(event.pos):
-                                self.selected_brush = i
-                                break
+                        # Если кликнули по кнопке, не проверяем кисти
+                        if not button_clicked:
+                            # Проверка кистей
+                            work_width = self.get_work_area_width()
+                            brush_start_y = 380
+                            for i in range(len(self.brushes)):
+                                x = work_width + 10 + (i % 2) * 85
+                                y = brush_start_y + (i // 2) * 70 - self.brush_scroll_y
+                                rect = pg.Rect(x - 2, y - 2, TILE_SIZE + 4, TILE_SIZE + 4)
+                                if rect.collidepoint(event.pos):
+                                    self.selected_brush = i
+                                    break
                 
-                elif event.button == 3:  # Правая кнопка - перетаскивание камеры
+                elif event.button == 2:  # Средняя кнопка - перетаскивание камеры
                     self.dragging_camera = True
                     self.drag_start_x = event.pos[0]
                     self.drag_start_y = event.pos[1]
+                elif event.button == 3:  # Правая кнопка - стирание в режиме рисования
+                    if self.mode == "paint" and event.pos[0] < self.get_work_area_width():
+                        wx, wy = self.screen_to_world(event.pos[0], event.pos[1])
+                        if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
+                            self.set_tile(wx, wy, -1)  # -1 означает удаление тайла
                 
                 elif event.button == 4:  # Скролл вверх
-                    self.tile_size = min(128, self.tile_size + 8)
+                    # Если мышь над областью кистей, скроллим кисти, иначе масштаб
+                    mouse_x, mouse_y = event.pos if hasattr(event, 'pos') else pg.mouse.get_pos()
+                    work_width = self.get_work_area_width()
+                    if (work_width + 10 <= mouse_x <= work_width + UI_PANEL_WIDTH - 10 and
+                        380 <= mouse_y <= 380 + self.brush_area_height):
+                        self.brush_scroll_y = max(0, self.brush_scroll_y - 70)
+                    else:
+                        self.tile_size = min(128, self.tile_size + 8)
                 
                 elif event.button == 5:  # Скролл вниз
-                    self.tile_size = max(32, self.tile_size - 8)
+                    mouse_x, mouse_y = event.pos if hasattr(event, 'pos') else pg.mouse.get_pos()
+                    work_width = self.get_work_area_width()
+                    if (work_width + 10 <= mouse_x <= work_width + UI_PANEL_WIDTH - 10 and
+                        380 <= mouse_y <= 380 + self.brush_area_height):
+                        max_scroll = max(0, len(self.brushes) // 2 * 70 - self.brush_area_height)
+                        self.brush_scroll_y = min(max_scroll, self.brush_scroll_y + 70)
+                    else:
+                        self.tile_size = max(32, self.tile_size - 8)
             
             elif event.type == pg.MOUSEBUTTONUP:
-                if event.button == 3:
+                if event.button == 2:  # Средняя кнопка - камера
                     self.dragging_camera = False
+                elif event.button == 3:  # Правая кнопка - ничего не делаем при отпускании
+                    pass
             
             elif event.type == pg.MOUSEMOTION:
                 if self.dragging_camera:
@@ -523,6 +598,8 @@ class MapEditor:
                         self.show_new_map_dialog = False
                     else:
                         return False
+        
+        return True  # Continue running
     
     def handle_button(self, name):
         """Обработка нажатия кнопок"""
@@ -546,8 +623,8 @@ class MapEditor:
         """Обработка событий диалога новой карты"""
         if event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
             dialog_w, dialog_h = 300, 150
-            dialog_x = (SCREEN_WIDTH - dialog_w) // 2
-            dialog_y = (SCREEN_HEIGHT - dialog_h) // 2
+            dialog_x = (self.screen_width - dialog_w) // 2
+            dialog_y = (self.screen_height - dialog_h) // 2
             
             ok_rect = pg.Rect(dialog_x + 50, dialog_y + 115, 80, 30)
             cancel_rect = pg.Rect(dialog_x + 170, dialog_y + 115, 80, 30)
@@ -616,13 +693,17 @@ class MapEditor:
         """Основной цикл редактора"""
         running = True
         while running:
-            running = self.handle_events()
+            # handle_events() returns True to continue, False to quit
+            if self.handle_events() == False:
+                running = False
+                break
             
             # Отрисовка
             self.screen.fill(COLOR_BG)
             
             # Рабочая область
-            work_area = pg.Rect(0, 0, WORK_AREA_WIDTH, SCREEN_HEIGHT)
+            work_width = self.get_work_area_width()
+            work_area = pg.Rect(0, 0, work_width, self.screen_height)
             pg.draw.rect(self.screen, (30, 34, 42), work_area)
             
             self.draw_grid()
@@ -630,7 +711,7 @@ class MapEditor:
             self.draw_collisions()
             
             # Курсор
-            if pg.mouse.get_pos()[0] < WORK_AREA_WIDTH:
+            if pg.mouse.get_pos()[0] < work_width:
                 wx, wy = self.screen_to_world(*pg.mouse.get_pos())
                 if 0 <= wx < self.map_width_tiles and 0 <= wy < self.map_height_tiles:
                     sx, sy = self.world_to_screen(wx, wy)

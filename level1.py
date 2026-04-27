@@ -47,6 +47,9 @@ class GameScene(Scene):
             walk_sprite_path="pics/main_person/pers.png",
             idle_sprite_path="pics/main_person/idle.png"
         )
+        # Initialize camera to follow the character
+        self.camera.follow(self.character.x + self.character.frame_width // 2,
+                            self.character.y + self.character.frame_height // 2)
         
         # Диалоговая система
         self.dialog_system = None
@@ -138,11 +141,9 @@ class GameScene(Scene):
         old_x, old_y = self.character.x, self.character.y
         
         # Обновление персонажа
+        # Update character movement using screen dimensions for bounds
         self.character.handle_input()
-        self.character.update_movement(
-            self.tile_map.width * self.tile_map.tile_size,
-            self.tile_map.height * self.tile_map.tile_size
-        )
+        self.character.update_movement(self.SCREEN_WIDTH, self.SCREEN_HEIGHT)
         self.character.update_animation(self.FPS)
         
         # Проверка коллизий с тайлами
@@ -160,16 +161,20 @@ class GameScene(Scene):
             self.character.x + self.character.frame_width // 2,
             self.character.y + self.character.frame_height // 2
         )
-        self.camera.update(self.tile_map.width, self.tile_map.height)
+        self.camera.update(self.tile_map.width * self.tile_map.tile_size,
+                            self.tile_map.height * self.tile_map.tile_size)
     
     def draw(self):
+        # Заполнение экрана одним цветом
+        self.screen.fill((0, 0, 0))
         # Отрисовка карты
         self.tile_map.draw(self.screen, self.camera.x, self.camera.y)
         
         # Отрисовка персонажа
         screen_x = self.character.x - self.camera.x
         screen_y = self.character.y - self.camera.y
-        self.character.draw(self.screen)
+        # Draw character at screen coordinates
+        self.screen.blit(self.character.animations[self.character.current_animation][self.character.current_frame], (screen_x, screen_y))
         
         # Отладочная отрисовка коллизий
         if self.show_collisions:

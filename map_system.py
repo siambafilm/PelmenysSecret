@@ -7,11 +7,13 @@ class TileMap:
     
     def __init__(self, tile_size=64):
         self.tile_size = tile_size
-        self.width = 0
-        self.height = 0
-        self.tiles = []  # (x, y, tile_type)
-        self.collisions = []  # (x, y, width, height)
+        self.width =0
+        self.height =0
+        self.tiles = []  # Список (x, y, tile_type)
+        self.collisions = []  # Список (x, y, width, height)
         self.tile_types = {}
+        self.custom_tile_start_id = 11  # ID для кастомных тайлов начинается с 11
+        self._custom_tiles_loaded = False
         self._init_default_tiles()
         
     def _init_default_tiles(self):
@@ -30,6 +32,42 @@ class TileMap:
             9: self._create_tile((200, 50, 50)),  # Лава
             10: self._create_tile((240, 240, 255)),  # Снег
         }
+    
+    def _ensure_custom_tiles_loaded(self):
+        """Загружает кастомные тайлы если еще не загружены"""
+        if self._custom_tiles_loaded:
+            return
+        
+        # Проверяем, инициализирован ли pygame.display
+        try:
+            pg.display.get_surface()
+        except:
+            return  # Display не готов, пропускаем
+        
+        custom_dir = "custom_tiles"
+        if not os.path.exists(custom_dir):
+            self._custom_tiles_loaded = True
+            return
+        
+        current_id = self.custom_tile_start_id
+        for filename in sorted(os.listdir(custom_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                filepath = os.path.join(custom_dir, filename)
+                try:
+                    surf = pg.image.load(filepath).convert_alpha()
+                    # Масштабируем до tile_size если нужно
+                    if surf.get_width() != self.tile_size or surf.get_height() != self.tile_size:
+                        surf = pg.transform.scale(surf, (self.tile_size, self.tile_size))
+                    self.tile_types[current_id] = surf
+                    print(f"✓ Загружен кастомный тайл для игры: {filename} (ID: {current_id})")
+                    current_id += 1
+                except Exception as e:
+                    print(f"✗ Ошибка загрузки {filename}: {e}")
+        
+        if current_id > self.custom_tile_start_id:
+            print(f"Загружено {current_id - self.custom_tile_start_id} кастомных тайлов для игры")
+        
+        self._custom_tiles_loaded = True
     
     def _create_tile(self, color):
         """Создает простой тайл с цветом"""
@@ -82,6 +120,8 @@ class TileMap:
             
             # Пересоздаем тайлы с правильным размером
             self._init_default_tiles()
+            self._custom_tiles_loaded = False  # Сбрасываем флаг для перезагрузки
+            self._ensure_custom_tiles_loaded()  # Загружаем кастомные тайлы
             
             print(f"Карта загружена: {filename} ({self.width}x{self.height})")
             return True
@@ -107,6 +147,9 @@ class TileMap:
     
     def draw(self, screen, camera_x=0, camera_y=0):
         """Отрисовывает видимую часть карты"""
+        # Убеждаемся, что кастомные тайлы загружены
+        self._ensure_custom_tiles_loaded()
+        
         # Вычисляем видимую область
         screen_width = screen.get_width()
         screen_height = screen.get_height()
@@ -156,15 +199,15 @@ class Camera:
         self.target_x = target_x - self.screen_width // 2
         self.target_y = target_y - self.screen_height // 2
         
-    def update(self, map_width, map_height):
-        """Обновляет позицию камеры"""
+    def update(self, map_width_pixels, map_height_pixels):
+        """Обновляет позицию камеры (map_width_pixels/map_height_pixels - размеры карты в пикселях)"""
         # Плавное следование
         self.x += (self.target_x - self.x) * self.smoothness
         self.y += (self.target_y - self.y) * self.smoothness
         
         # Ограничение границ карты
-        max_x = max(0, map_width * 64 - self.screen_width)
-        max_y = max(0, map_height * 64 - self.screen_height)
+        max_x = max(0, map_width_pixels - self.screen_width)
+        max_y = max(0, map_height_pixels - self.screen_height)
         
         self.x = max(0, min(self.x, max_x))
         self.y = max(0, min(self.y, max_y))

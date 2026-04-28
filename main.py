@@ -30,7 +30,7 @@ class Game:
             self.current_scene = MainMenu(self.screen)
         elif scene_name == "GAME":
             #from game_scene import GameScene
-            from level1 import GameScene
+            from game_scene import GameScene
             self.current_scene = GameScene(self.screen, **kwargs)
         elif scene_name == "QUIT":
             self.running = False

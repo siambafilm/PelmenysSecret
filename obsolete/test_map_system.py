@@ -40,7 +40,7 @@ def test_game_with_map():
     pg.display.set_caption("PelmenysSecret - Тест карты")
     clock = pg.time.Clock()
     
-    from level1 import GameScene
+    from game_scene import GameScene
     scene = GameScene(screen, load_save=False, map_file=None)
     
     running = True

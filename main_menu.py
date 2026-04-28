@@ -172,14 +172,13 @@ class MainMenu(Scene):
         """Загрузка сохраненной игры"""
         print("Загрузка сохранения...")
         # Здесь будет загрузка игровых данных
-        from game_scene import GameScene
-        self.next_scene = GameScene(self.screen, load_save=True)
+        #from dialog_scene import GameScene
+        #self.next_scene = GameScene(self.screen, load_save=True)
     
     def on_new_game(self):
         """Начало новой игры"""
         print("Начало новой игры...")
-        #from game_scene import GameScene
-        from level1 import GameScene
+        from game_scene import GameScene
         self.next_scene = GameScene(self.screen, load_save=False, map_file="1.map")
     
     def on_exit(self):

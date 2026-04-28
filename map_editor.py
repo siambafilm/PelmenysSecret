@@ -88,6 +88,10 @@ class MapEditor:
         self.show_new_map_dialog = False
         self.new_map_width = "20"
         self.new_map_height = "15"
+        self.show_resize_dialog = False
+        self.resize_width = "20"
+        self.resize_height = "15"
+        self.resize_active_field = None  # "width" or "height"
         
         # Скролл кистей
         self.brush_scroll_y = 0
@@ -114,6 +118,7 @@ class MapEditor:
             "mode_paint": pg.Rect(work_width + 10, 210, 180, 30),
             "mode_collision": pg.Rect(work_width + 10, 250, 180, 30),
             "mode_fill": pg.Rect(work_width + 10, 290, 180, 30),
+            "resize": pg.Rect(work_width + 10, 330, 180, 30),
         }
         
     def create_editor_tiles(self):
@@ -400,6 +405,20 @@ class MapEditor:
         self.undo_stack.clear()
         self.redo_stack.clear()
         self.clipboard.clear()
+
+    def resize_map(self, width, height):
+        """Изменяет размер карты, обрезая или расширяя её"""
+        new_w = max(5, min(100, width))
+        new_h = max(5, min(100, height))
+        # Trim tiles outside new bounds
+        self.layer1_tiles = [(x, y, idx) for (x, y, idx) in self.layer1_tiles if x < new_w and y < new_h]
+        self.layer2_tiles = [(x, y, idx) for (x, y, idx) in self.layer2_tiles if x < new_w and y < new_h]
+        self.collisions = [(x, y, w, h) for (x, y, w, h) in self.collisions if x < new_w and y < new_h]
+        self.map_width_tiles = new_w
+        self.map_height_tiles = new_h
+        # Adjust camera if needed
+        self.camera_x = min(self.camera_x, self.map_width_tiles * self.tile_size - self.get_work_area_width())
+        self.camera_y = min(self.camera_y, self.map_height_tiles * self.tile_size - self.screen_height)
     
     def save_map(self, filename):
         """Сохраняет карту в файл .map"""
@@ -520,6 +539,31 @@ class MapEditor:
                 s = pg.Surface((work_width, 1))
                 s.fill(color)
                 self.screen.blit(s, (0, y))
+        
+        # Draw red boundary around editable map area
+        map_px_width = self.map_width_tiles * self.tile_size
+        map_px_height = self.map_height_tiles * self.tile_size
+        
+        # Convert to screen coordinates
+        screen_left = -self.camera_x
+        screen_top = -self.camera_y
+        screen_right = screen_left + map_px_width
+        screen_bottom = screen_top + map_px_height
+        
+        # Clip to work area
+        if screen_left < 0:
+            screen_left = 0
+        if screen_top < 0:
+            screen_top = 0
+        if screen_right > work_width:
+            screen_right = work_width
+        if screen_bottom > self.screen_height:
+            screen_bottom = self.screen_height
+        
+        # Draw red rectangle
+        if screen_right > screen_left and screen_bottom > screen_top:
+            pg.draw.rect(self.screen, (255, 0, 0),
+                        (screen_left, screen_top, screen_right - screen_left, screen_bottom - screen_top), 2)
     
     def draw_tiles(self):
         """Рисует все тайлы с учетом текущего масштаба и прозрачности слоев"""
@@ -637,7 +681,8 @@ class MapEditor:
                 "clear": "Очистить",
                 "mode_paint": "Режим: Кисть",
                 "mode_collision": "Режим: Коллизия",
-                "mode_fill": "Режим: Заливка (F)"
+                "mode_fill": "Режим: Заливка (F)",
+                "resize": "Изменить размер"
             }
             text = self.font_small.render(text_map[name], True, COLOR_TEXT)
             text_rect = text.get_rect(center=rect.center)
@@ -764,6 +809,73 @@ class MapEditor:
         
         return ok_rect, cancel_rect
     
+    def draw_resize_dialog(self):
+        """Рисует диалог изменения размеров карты"""
+        print("DEBUG: drawing resize dialog")
+        overlay = pg.Surface((self.screen_width, self.screen_height), pg.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+        
+        dialog_w, dialog_h = 300, 150
+        dialog_x = (self.screen_width - dialog_w) // 2
+        dialog_y = (self.screen_height - dialog_h) // 2
+        
+        pg.draw.rect(self.screen, COLOR_UI_BG, (dialog_x, dialog_y, dialog_w, dialog_h), border_radius=10)
+        pg.draw.rect(self.screen, COLOR_UI_BORDER, (dialog_x, dialog_y, dialog_w, dialog_h), 2, border_radius=10)
+        
+        title = self.font_title.render("Изменить размер", True, COLOR_TEXT)
+        self.screen.blit(title, (dialog_x + (dialog_w - title.get_width()) // 2, dialog_y + 15))
+        
+        width_label = self.font.render("Ширина (5-100):", True, COLOR_TEXT)
+        self.screen.blit(width_label, (dialog_x + 20, dialog_y + 55))
+        height_label = self.font.render("Высота (5-100):", True, COLOR_TEXT)
+        self.screen.blit(height_label, (dialog_x + 20, dialog_y + 90))
+        
+        # Input fields
+        input_w = 80
+        input_h = 24
+        width_input_rect = pg.Rect(dialog_x + 150, dialog_y + 50, input_w, input_h)
+        height_input_rect = pg.Rect(dialog_x + 150, dialog_y + 85, input_w, input_h)
+        
+        # Draw input boxes
+        for rect, active in [(width_input_rect, self.resize_active_field == "width"),
+                              (height_input_rect, self.resize_active_field == "height")]:
+            bg_color = (200, 200, 200) if active else (150, 150, 150)
+            pg.draw.rect(self.screen, bg_color, rect)
+            pg.draw.rect(self.screen, COLOR_UI_BORDER, rect, 1)
+        
+        # Draw text in input boxes
+        width_text = self.font_small.render(self.resize_width, True, (0, 0, 0))
+        self.screen.blit(width_text, (width_input_rect.x + 5, width_input_rect.y + 5))
+        height_text = self.font_small.render(self.resize_height, True, (0, 0, 0))
+        self.screen.blit(height_text, (height_input_rect.x + 5, height_input_rect.y + 5))
+        
+        # Draw cursor for active field
+        if self.resize_active_field == "width":
+            cursor_x = width_input_rect.x + 5 + width_text.get_width()
+            pg.draw.line(self.screen, (0, 0, 0),
+                        (cursor_x, width_input_rect.y + 5),
+                        (cursor_x, width_input_rect.y + input_h - 5), 1)
+        elif self.resize_active_field == "height":
+            cursor_x = height_input_rect.x + 5 + height_text.get_width()
+            pg.draw.line(self.screen, (0, 0, 0),
+                        (cursor_x, height_input_rect.y + 5),
+                        (cursor_x, height_input_rect.y + input_h - 5), 1)
+        
+        ok_rect = pg.Rect(dialog_x + 50, dialog_y + 115, 80, 30)
+        cancel_rect = pg.Rect(dialog_x + 170, dialog_y + 115, 80, 30)
+        
+        mouse_pos = pg.mouse.get_pos()
+        for rect, text, color in [(ok_rect, "OK", COLOR_BUTTON), (cancel_rect, "Отмена", (100, 100, 100))]:
+            hover = rect.collidepoint(mouse_pos)
+            btn_color = color if hover else tuple(c - 30 for c in color)
+            pg.draw.rect(self.screen, btn_color, rect, border_radius=5)
+            pg.draw.rect(self.screen, COLOR_UI_BORDER, rect, 2, border_radius=5)
+            btn_text = self.font_small.render(text, True, COLOR_TEXT)
+            self.screen.blit(btn_text, (rect.x + (rect.width - btn_text.get_width()) // 2,
+                                   rect.y + (rect.height - btn_text.get_height()) // 2))
+        return ok_rect, cancel_rect, width_input_rect, height_input_rect
+    
     def handle_events(self):
         """Обработка событий - returns True to continue, False to quit"""
         # Если открыт диалог, пропускаем события Pygame
@@ -784,6 +896,10 @@ class MapEditor:
             
             if self.show_new_map_dialog:
                 self.handle_new_map_dialog(event)
+                continue
+            
+            if self.show_resize_dialog:
+                self.handle_resize_dialog(event)
                 continue
             
             if event.type == pg.MOUSEBUTTONDOWN:
@@ -959,6 +1075,12 @@ class MapEditor:
             self.mode = "collision"
         elif name == "mode_fill":
             self.mode = "fill"
+        elif name == "resize":
+            print("DEBUG: resize button clicked")
+            self.show_resize_dialog = True
+            self.resize_width = str(self.map_width_tiles)
+            self.resize_height = str(self.map_height_tiles)
+            self.resize_active_field = "width"
     
     def handle_new_map_dialog(self, event):
         """Обработка событий диалога новой карты"""
@@ -992,6 +1114,72 @@ class MapEditor:
                     pass
             elif event.key == pg.K_ESCAPE:
                 self.show_new_map_dialog = False
+    
+    def handle_resize_dialog(self, event):
+        """Обработка событий диалога изменения размера карты"""
+        dialog_w, dialog_h = 300, 150
+        dialog_x = (self.screen_width - dialog_w) // 2
+        dialog_y = (self.screen_height - dialog_h) // 2
+        
+        # Input field rects (must match draw_resize_dialog)
+        input_w, input_h = 80, 24
+        width_input_rect = pg.Rect(dialog_x + 150, dialog_y + 50, input_w, input_h)
+        height_input_rect = pg.Rect(dialog_x + 150, dialog_y + 85, input_w, input_h)
+        
+        if event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
+            ok_rect = pg.Rect(dialog_x + 50, dialog_y + 115, 80, 30)
+            cancel_rect = pg.Rect(dialog_x + 170, dialog_y + 115, 80, 30)
+            
+            # Check clicks on input fields
+            if width_input_rect.collidepoint(event.pos):
+                self.resize_active_field = "width"
+            elif height_input_rect.collidepoint(event.pos):
+                self.resize_active_field = "height"
+            elif ok_rect.collidepoint(event.pos):
+                try:
+                    w = int(self.resize_width)
+                    h = int(self.resize_height)
+                    self.resize_map(w, h)
+                    self.show_resize_dialog = False
+                except ValueError:
+                    pass
+            elif cancel_rect.collidepoint(event.pos):
+                self.show_resize_dialog = False
+        
+        elif event.type == pg.KEYDOWN:
+            if self.resize_active_field:
+                if event.key == pg.K_BACKSPACE:
+                    if self.resize_active_field == "width":
+                        self.resize_width = self.resize_width[:-1]
+                    else:
+                        self.resize_height = self.resize_height[:-1]
+                elif event.unicode.isdigit():
+                    # Limit to 3 digits
+                    if self.resize_active_field == "width" and len(self.resize_width) < 3:
+                        self.resize_width += event.unicode
+                    elif self.resize_active_field == "height" and len(self.resize_height) < 3:
+                        self.resize_height += event.unicode
+                elif event.key == pg.K_RETURN:
+                    try:
+                        w = int(self.resize_width)
+                        h = int(self.resize_height)
+                        self.resize_map(w, h)
+                        self.show_resize_dialog = False
+                    except ValueError:
+                        pass
+                elif event.key == pg.K_ESCAPE:
+                    self.show_resize_dialog = False
+            else:
+                if event.key == pg.K_RETURN:
+                    try:
+                        w = int(self.resize_width)
+                        h = int(self.resize_height)
+                        self.resize_map(w, h)
+                        self.show_resize_dialog = False
+                    except ValueError:
+                        pass
+                elif event.key == pg.K_ESCAPE:
+                    self.show_resize_dialog = False
     
     def save_map_dialog(self):
         """Диалог сохранения карты"""
@@ -1101,6 +1289,9 @@ class MapEditor:
             
             if self.show_new_map_dialog:
                 self.draw_new_map_dialog()
+            
+            if self.show_resize_dialog:
+                self.draw_resize_dialog()
             
             pg.display.flip()
             self.clock.tick(60)

@@ -164,9 +164,7 @@ class Char:
         self.x += self.direction[0] * self.speed
         self.y += self.direction[1] * self.speed
         
-        # Ограничение движения по границам экрана
-        self.x = max(0, min(self.x, screen_width - self.frame_width))
-        self.y = max(0, min(self.y, screen_height - self.frame_height))
+        # Убираем ограничение по границам экрана; границы будет контролировать карта
         
         # Выбор анимации на основе направления движения
         if self.direction == [0, 0]:

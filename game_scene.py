@@ -30,9 +30,17 @@ class GameScene(Scene):
         self.tile_map = TileMap(tile_size=64)
         if map_file and os.path.exists(map_file):
             self.tile_map.load_from_file(map_file)
+            print(f"Загружена карта: {map_file} ({self.tile_map.width}x{self.tile_map.height}, тайл {self.tile_map.tile_size})")
         else:
-            # Создаем тестовую карту по умолчанию
-            self._create_default_map()
+            # Пытаемся загрузить test.map если существует
+            test_map_path = "Maps/test.map"
+            if os.path.exists(test_map_path):
+                self.tile_map.load_from_file(test_map_path)
+                print(f"Загружена карта по умолчанию: {test_map_path} ({self.tile_map.width}x{self.tile_map.height})")
+            else:
+                # Создаем тестовую карту по умолчанию
+                self._create_default_map()
+                print(f"Создана карта по умолчанию: {self.tile_map.width}x{self.tile_map.height}")
         
         # Камера
         self.camera = Camera(self.SCREEN_WIDTH, self.SCREEN_HEIGHT)
@@ -57,10 +65,11 @@ class GameScene(Scene):
         # Флаги
         self.show_collisions = False
         
-        # Отступы для хитбокса (подберите под свой спрайт)
-        self.hitbox_offset_x = 12      # Отступ слева и справа
-        self.hitbox_offset_y = 120      # Отступ сверху
-        self.hitbox_offset_bottom = 8  # Отступ снизу
+        # Отступы для хитбокса (автоматически подстраиваются под размер спрайта)
+        # Хитбокс будет занимать нижнюю половину спрайта по вертикали
+        self.hitbox_offset_x = self.character.frame_width // 4
+        self.hitbox_offset_y = self.character.frame_height // 2
+        self.hitbox_offset_bottom = 4
     
     def _create_default_map(self):
         """Создает тестовую карту по умолчанию"""
@@ -163,8 +172,17 @@ class GameScene(Scene):
                 self.camera.screen_height = self.cur_h
                 # Обновляем позицию персонажа при изменении размера окна
                 if hasattr(self, 'character'):
-                    self.character.x = min(self.character.x, self.tile_map.width * self.tile_map.tile_size - self.character.frame_width)
-                    self.character.y = min(self.character.y, self.tile_map.height * self.tile_map.tile_size - self.character.frame_height)
+                    # Adjust character position after window resize, respecting hitbox limits
+                    map_width = self.tile_map.width * self.tile_map.tile_size
+                    map_height = self.tile_map.height * self.tile_map.tile_size
+                    hitbox_width = self.character.frame_width - self.hitbox_offset_x * 2
+                    hitbox_height = self.character.frame_height - self.hitbox_offset_y - self.hitbox_offset_bottom
+                    min_x = -self.hitbox_offset_x
+                    max_x = map_width - self.hitbox_offset_x - hitbox_width
+                    min_y = -self.hitbox_offset_y
+                    max_y = map_height - self.hitbox_offset_y - hitbox_height
+                    self.character.x = max(min_x, min(self.character.x, max_x))
+                    self.character.y = max(min_y, min(self.character.y, max_y))
             
             elif event.type == pg.KEYDOWN:
                 if event.key == pg.K_ESCAPE:
@@ -210,6 +228,23 @@ class GameScene(Scene):
         # Проверяем вертикальное движение
         if self._has_collision_at_position(self.character.x, self.character.y):
             self.character.y = old_y
+        
+        # Ограничиваем персонажа границами карты, проверяя по хитбоксу
+        map_width = self.tile_map.width * self.tile_map.tile_size
+        map_height = self.tile_map.height * self.tile_map.tile_size
+        
+        # Размеры хитбокса
+        hitbox_width = self.character.frame_width - self.hitbox_offset_x * 2
+        hitbox_height = self.character.frame_height - self.hitbox_offset_y - self.hitbox_offset_bottom
+        
+        # Границы для позиции персонажа, чтобы хитбокс не выходил за карту
+        min_x = -self.hitbox_offset_x
+        max_x = map_width - self.hitbox_offset_x - hitbox_width
+        min_y = -self.hitbox_offset_y
+        max_y = map_height - self.hitbox_offset_y - hitbox_height
+        
+        self.character.x = max(min_x, min(self.character.x, max_x))
+        self.character.y = max(min_y, min(self.character.y, max_y))
         
         # Обновляем камеру
         self.camera.follow(

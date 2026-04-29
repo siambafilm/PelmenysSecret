@@ -118,9 +118,10 @@ class TileMap:
             # Support new two-layer format
             self.layer1_tiles = data.get("layer1_tiles", [])
             self.layer2_tiles = data.get("layer2_tiles", [])
+            self.layer3_tiles = data.get("layer3_tiles", [])  # New overlay layer
             # Fallback for old maps
             self.tiles = data.get("tiles", [])
-            # Combine layers for rendering
+            # Combine layers for rendering (base layers)
             if not self.tiles:
                 self.tiles = self.layer1_tiles + self.layer2_tiles
             self.collisions = data.get("collisions", [])
@@ -166,7 +167,7 @@ class TileMap:
         end_x = min(self.width, (camera_x + screen_width) // self.tile_size + 1)
         end_y = min(self.height, (camera_y + screen_height) // self.tile_size + 1)
         
-        # Рисуем тайлы
+        # Рисуем базовые тайлы (слои 1 и 2)
         for x, y, tile_type in self.tiles:
             if start_x <= x < end_x and start_y <= y < end_y:
                 screen_x = x * self.tile_size - camera_x
@@ -175,6 +176,25 @@ class TileMap:
                 if tile_type in self.tile_types:
                     tile_surf = self.tile_types[tile_type]
                     # Масштабируем если нужно
+                    if tile_surf.get_width() != self.tile_size:
+                        tile_surf = pg.transform.scale(tile_surf, (self.tile_size, self.tile_size))
+                    screen.blit(tile_surf, (screen_x, screen_y))
+
+    def draw_overlay(self, screen, camera_x=0, camera_y=0):
+        """Отрисовывает слой поверх персонажа (слой 3)"""
+        self._ensure_custom_tiles_loaded()
+        screen_width = screen.get_width()
+        screen_height = screen.get_height()
+        start_x = max(0, camera_x // self.tile_size)
+        start_y = max(0, camera_y // self.tile_size)
+        end_x = min(self.width, (camera_x + screen_width) // self.tile_size + 1)
+        end_y = min(self.height, (camera_y + screen_height) // self.tile_size + 1)
+        for x, y, tile_type in self.layer3_tiles:
+            if start_x <= x < end_x and start_y <= y < end_y:
+                screen_x = x * self.tile_size - camera_x
+                screen_y = y * self.tile_size - camera_y
+                if tile_type in self.tile_types:
+                    tile_surf = self.tile_types[tile_type]
                     if tile_surf.get_width() != self.tile_size:
                         tile_surf = pg.transform.scale(tile_surf, (self.tile_size, self.tile_size))
                     screen.blit(tile_surf, (screen_x, screen_y))

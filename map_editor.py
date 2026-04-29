@@ -51,6 +51,7 @@ class MapEditor:
         self.current_layer = 1  # Текущий слой (1 или 2)
         self.layer1_tiles = []  # Слой 1
         self.layer2_tiles = []  # Слой 2
+        self.layer3_tiles = []  # Новый слой поверх персонажа
         self.collisions = []  # Коллизии (общие для обоих слоев)
         
         # Настройки карты
@@ -252,6 +253,7 @@ class MapEditor:
         state = {
             'layer1_tiles': copy.deepcopy(self.layer1_tiles),
             'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'layer3_tiles': copy.deepcopy(self.layer3_tiles),
             'collisions': copy.deepcopy(self.collisions),
         }
         self.undo_stack.append(state)
@@ -267,6 +269,7 @@ class MapEditor:
         current_state = {
             'layer1_tiles': copy.deepcopy(self.layer1_tiles),
             'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'layer3_tiles': copy.deepcopy(self.layer3_tiles),
             'collisions': copy.deepcopy(self.collisions),
         }
         self.redo_stack.append(current_state)
@@ -274,6 +277,7 @@ class MapEditor:
         prev_state = self.undo_stack.pop()
         self.layer1_tiles = prev_state['layer1_tiles']
         self.layer2_tiles = prev_state['layer2_tiles']
+        self.layer3_tiles = prev_state['layer3_tiles']
         self.collisions = prev_state['collisions']
     
     def redo(self):
@@ -284,6 +288,7 @@ class MapEditor:
         current_state = {
             'layer1_tiles': copy.deepcopy(self.layer1_tiles),
             'layer2_tiles': copy.deepcopy(self.layer2_tiles),
+            'layer3_tiles': copy.deepcopy(self.layer3_tiles),
             'collisions': copy.deepcopy(self.collisions),
         }
         self.undo_stack.append(current_state)
@@ -291,6 +296,7 @@ class MapEditor:
         next_state = self.redo_stack.pop()
         self.layer1_tiles = next_state['layer1_tiles']
         self.layer2_tiles = next_state['layer2_tiles']
+        self.layer3_tiles = next_state['layer3_tiles']
         self.collisions = next_state['collisions']
     
     def copy_selection(self):
@@ -307,8 +313,8 @@ class MapEditor:
         
         self.clipboard = []
         
-        # Копируем тайлы из обоих слоев
-        for tiles, layer_num in [(self.layer1_tiles, 1), (self.layer2_tiles, 2)]:
+        # Копируем тайлы из всех слоев
+        for tiles, layer_num in [(self.layer1_tiles, 1), (self.layer2_tiles, 2), (self.layer3_tiles, 3)]:
             for tx, ty, idx in tiles:
                 if min_x <= tx <= max_x and min_y <= ty <= max_y:
                     # Сохраняем относительные координаты
@@ -337,8 +343,10 @@ class MapEditor:
                 # Вставляем в тот же слой, откуда копировали
                 if layer_num == 1:
                     self.set_tile_at_layer(target_x, target_y, brush_idx, 1)
-                else:
+                elif layer_num == 2:
                     self.set_tile_at_layer(target_x, target_y, brush_idx, 2)
+                else:
+                    self.set_tile_at_layer(target_x, target_y, brush_idx, 3)
         
         print(f"Вставлено {len(self.clipboard)} тайлов")
     
@@ -362,36 +370,60 @@ class MapEditor:
             self.copy_end_pos = None
             return
         
-        # Обычный flood fill
-        current_tiles = self.layer1_tiles if self.current_layer == 1 else self.layer2_tiles
-        target_tile = None
-        for tx, ty, idx in current_tiles:
-            if tx == start_x and ty == start_y:
-                target_tile = idx
-                break
-        
-        if target_tile == brush_idx:
-            return
-        
-        self.save_state()
-        queue = [(start_x, start_y)]
-        visited = set()
-        visited.add((start_x, start_y))
-        
-        while queue:
-            x, y = queue.pop(0)
-            self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                nx, ny = x + dx, y + dy
-                if (0 <= nx < self.map_width_tiles and 0 <= ny < self.map_height_tiles and (nx, ny) not in visited):
-                    neighbor_tile = None
-                    for tx, ty, idx in current_tiles:
-                        if tx == nx and ty == ny:
-                            neighbor_tile = idx
-                            break
-                    if neighbor_tile == target_tile:
-                        visited.add((nx, ny))
-                        queue.append((nx, ny))
+        # Обычный flood fill (работает только для слоев 1 и 2, как и оригинал)
+        # Для слоя 3 flood fill может быть реализован отдельно, если нужно.
+        if self.current_layer == 3:
+            # Для простоты используем обычную заливку для слоя 3
+            queue = [(start_x, start_y)]
+            visited = set()
+            target_tile = self.get_tile_at_layer(start_x, start_y, self.current_layer)
+            
+            if target_tile == brush_idx:
+                return
+            
+            self.save_state()
+            while queue:
+                x, y = queue.pop(0)
+                if (x, y) in visited:
+                    continue
+                visited.add((x, y))
+                self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < self.map_width_tiles and 0 <= ny < self.map_height_tiles:
+                        neighbor = self.get_tile_at_layer(nx, ny, self.current_layer)
+                        if neighbor == target_tile:
+                            queue.append((nx, ny))
+        else:
+            current_tiles = self.layer1_tiles if self.current_layer == 1 else self.layer2_tiles
+            target_tile = None
+            for tx, ty, idx in current_tiles:
+                if tx == start_x and ty == start_y:
+                    target_tile = idx
+                    break
+            
+            if target_tile == brush_idx:
+                return
+            
+            self.save_state()
+            queue = [(start_x, start_y)]
+            visited = set()
+            visited.add((start_x, start_y))
+            
+            while queue:
+                x, y = queue.pop(0)
+                self.set_tile_at_layer(x, y, brush_idx, self.current_layer)
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = x + dx, y + dy
+                    if (0 <= nx < self.map_width_tiles and 0 <= ny < self.map_height_tiles and (nx, ny) not in visited):
+                        neighbor_tile = None
+                        for tx, ty, idx in current_tiles:
+                            if tx == nx and ty == ny:
+                                neighbor_tile = idx
+                                break
+                        if neighbor_tile == target_tile:
+                            visited.add((nx, ny))
+                            queue.append((nx, ny))
     
     def new_map(self, width, height):
         """Создает новую карту"""
@@ -399,6 +431,7 @@ class MapEditor:
         self.map_height_tiles = max(5, min(100, height))
         self.layer1_tiles = []
         self.layer2_tiles = []
+        self.layer3_tiles = []
         self.collisions = []
         self.camera_x = 0
         self.camera_y = 0
@@ -413,6 +446,7 @@ class MapEditor:
         # Trim tiles outside new bounds
         self.layer1_tiles = [(x, y, idx) for (x, y, idx) in self.layer1_tiles if x < new_w and y < new_h]
         self.layer2_tiles = [(x, y, idx) for (x, y, idx) in self.layer2_tiles if x < new_w and y < new_h]
+        self.layer3_tiles = [(x, y, idx) for (x, y, idx) in self.layer3_tiles if x < new_w and y < new_h]
         self.collisions = [(x, y, w, h) for (x, y, w, h) in self.collisions if x < new_w and y < new_h]
         self.map_width_tiles = new_w
         self.map_height_tiles = new_h
@@ -432,6 +466,7 @@ class MapEditor:
             "tiles": combined_tiles,  # Combined for backward compatibility
             "layer1_tiles": self.layer1_tiles,
             "layer2_tiles": self.layer2_tiles,
+            "layer3_tiles": self.layer3_tiles,
             "collisions": self.collisions
         }
         with open(filename, 'w') as f:
@@ -451,10 +486,12 @@ class MapEditor:
             if "layer1_tiles" in data:
                 self.layer1_tiles = data.get("layer1_tiles", [])
                 self.layer2_tiles = data.get("layer2_tiles", [])
+                self.layer3_tiles = data.get("layer3_tiles", [])
             else:
                 # Старый формат - переносим в слой 1
                 self.layer1_tiles = data.get("tiles", [])
                 self.layer2_tiles = []
+                self.layer3_tiles = []
             
             self.collisions = data.get("collisions", [])
             self.camera_x = 0
@@ -469,7 +506,12 @@ class MapEditor:
     
     def get_tile_at_layer(self, x, y, layer):
         """Получает тайл по координатам на указанном слое"""
-        tiles = self.layer1_tiles if layer == 1 else self.layer2_tiles
+        if layer == 1:
+            tiles = self.layer1_tiles
+        elif layer == 2:
+            tiles = self.layer2_tiles
+        else:
+            tiles = self.layer3_tiles
         for tx, ty, idx in tiles:
             if tx == x and ty == y:
                 return idx
@@ -481,7 +523,12 @@ class MapEditor:
     
     def set_tile_at_layer(self, x, y, brush_idx, layer):
         """Устанавливает тайл на указанном слое"""
-        tiles = self.layer1_tiles if layer == 1 else self.layer2_tiles
+        if layer == 1:
+            tiles = self.layer1_tiles
+        elif layer == 2:
+            tiles = self.layer2_tiles
+        else:
+            tiles = self.layer3_tiles
         # Удаляем старый тайл на этой позиции
         new_tiles = [(tx, ty, idx) for tx, ty, idx in tiles if not (tx == x and ty == y)]
         # Добавляем новый
@@ -489,8 +536,10 @@ class MapEditor:
             new_tiles.append((x, y, brush_idx))
         if layer == 1:
             self.layer1_tiles = new_tiles
-        else:
+        elif layer == 2:
             self.layer2_tiles = new_tiles
+        else:
+            self.layer3_tiles = new_tiles
     
     def set_tile(self, x, y, brush_idx):
         """Устанавливает тайл на текущем слое"""
@@ -578,9 +627,13 @@ class MapEditor:
         if self.current_layer == 1:
             layer1_alpha = 255
             layer2_alpha = 100  # Полупрозрачный
-        else:
+        elif self.current_layer == 2:
             layer1_alpha = 100  # Полупрозрачный
             layer2_alpha = 255
+        else:
+            layer1_alpha = 100  # Полупрозрачный
+            layer2_alpha = 100  # Все слои полупрозрачные
+            layer3_alpha = 255  # Слой 3 всегда полностью видимый
         
         # Рисуем тайлы слоя 1
         for x, y, idx in self.layer1_tiles:
@@ -607,6 +660,16 @@ class MapEditor:
                         scaled_brush = scaled_brush.copy()
                         scaled_brush.set_alpha(layer2_alpha)
                     self.screen.blit(scaled_brush, (screen_x, screen_y))
+        
+        # Рисуем тайлы слоя 3 (поверх персонажа)
+        if self.current_layer == 3:
+            for x, y, idx in self.layer3_tiles:
+                if start_x <= x < end_x and start_y <= y < end_y:
+                    screen_x = x * self.tile_size - self.camera_x
+                    screen_y = y * self.tile_size - self.camera_y
+                    if 0 <= idx < len(self.brushes):
+                        scaled_brush = pg.transform.scale(self.brushes[idx], (self.tile_size, self.tile_size))
+                        self.screen.blit(scaled_brush, (screen_x, screen_y))
     
     def draw_collisions(self):
         """Рисует коллизии"""
@@ -706,10 +769,19 @@ class MapEditor:
         self.screen.blit(mode_surf, (work_width + 10, 330))
         
         # Индикатор текущего слоя
-        layer_status = "активен" if self.current_layer == 1 else "полупрозр."
-        other_status = "полупрозр." if self.current_layer == 1 else "активен"
+        if self.current_layer == 1:
+            layer_status = "активен"
+            other_status = "полупрозр."
+            layer_color = (255, 200, 100)
+        elif self.current_layer == 2:
+            layer_status = "полупрозр."
+            other_status = "активен"
+            layer_color = (100, 200, 255)
+        else:
+            layer_status = "активен (верх)"
+            other_status = "базовые слои"
+            layer_color = (200, 255, 100)
         layer_text = f"Слой: {self.current_layer} [{layer_status} / {other_status}]"
-        layer_color = (255, 200, 100) if self.current_layer == 1 else (100, 200, 255)
         layer_surf = self.font.render(layer_text, True, layer_color)
         self.screen.blit(layer_surf, (work_width + 10, 355))
         
@@ -754,14 +826,14 @@ class MapEditor:
         status_y = self.screen_height - 80
         pg.draw.line(self.screen, COLOR_UI_BORDER, (work_width + 10, status_y - 10), (self.screen_width - 10, status_y - 10), 1)
         
-        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Слой1: {len(self.layer1_tiles)} | Слой2: {len(self.layer2_tiles)} | Коллизий: {len(self.collisions)}"
+        status_text = f"Карта: {self.map_width_tiles}x{self.map_height_tiles} | Слой1: {len(self.layer1_tiles)} | Слой2: {len(self.layer2_tiles)} | Слой3: {len(self.layer3_tiles)} | Коллизий: {len(self.collisions)}"
         status_surf = self.font_small.render(status_text, True, COLOR_TEXT)
         self.screen.blit(status_surf, (work_width + 10, status_y))
         
         # Подсказка с горячими клавишами
         work_width = self.get_work_area_width()
         hint_lines = [
-            "1/2 - смена слоя | F - заливка | Пробел - режим",
+            "1/2/3 - смена слоя | F - заливка | Пробел - режим",
             "Ctrl+Z/Y - undo/redo | C - выделить | Ctrl+V - вставить",
             "СКМ - камера | ПКМ - ластик | Колесо - масштаб"
         ]
@@ -1034,6 +1106,9 @@ class MapEditor:
                     elif event.key == pg.K_2:  # 2 - слой 2
                         self.current_layer = 2
                         print("Активен слой 2")
+                    elif event.key == pg.K_3:  # 3 - слой 3 (поверх персонажа)
+                        self.current_layer = 3
+                        print("Активен слой 3 (поверх персонажа)")
                     elif event.key == pg.K_c:  # C - начать выделение
                         if not self.is_selecting:
                             self.is_selecting = True
@@ -1068,6 +1143,7 @@ class MapEditor:
             self.save_state()
             self.layer1_tiles = []
             self.layer2_tiles = []
+            self.layer3_tiles = []
             self.collisions = []
         elif name == "mode_paint":
             self.mode = "paint"

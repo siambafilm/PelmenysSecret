@@ -257,7 +257,7 @@ class GameScene(Scene):
     def draw(self):
         # Заполнение экрана одним цветом
         self.screen.fill((0, 0, 0))
-        # Отрисовка карты
+        # Отрисовка карты (базовые слои)
         self.tile_map.draw(self.screen, self.camera.x, self.camera.y)
         
         # Отрисовка персонажа
@@ -265,6 +265,9 @@ class GameScene(Scene):
         screen_y = self.character.y - self.camera.y
         # Draw character at screen coordinates
         self.screen.blit(self.character.animations[self.character.current_animation][self.character.current_frame], (screen_x, screen_y))
+        
+        # Отрисовка слоя поверх персонажа (арки, мосты и т.д.)
+        self.tile_map.draw_overlay(self.screen, self.camera.x, self.camera.y)
         
         # Отладочная отрисовка коллизий
         if self.show_collisions:

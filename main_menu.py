@@ -179,7 +179,7 @@ class MainMenu(Scene):
         """Начало новой игры"""
         print("Начало новой игры...")
         from game_scene import GameScene
-        self.next_scene = GameScene(self.screen, load_save=False, map_file="Maps/test.map")
+        self.next_scene = GameScene(self.screen, load_save=False, map_file="Maps/1.map")
     
     def on_exit(self):
         """Выход из игры"""
